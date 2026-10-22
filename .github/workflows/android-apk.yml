@@ -22,7 +22,7 @@ jobs:
         working-directory: android
         env:
           EPOCHS_GAME_URL: ${{ vars.EPOCHS_GAME_URL }}
-        run: gradle :app:assembleDebug -PepochsGameUrl="${EPOCHS_GAME_URL:-https://example.invalid/}"
+        run: gradle :app:assembleDebug -PepochsGameUrl="https://epochs-game.pages.dev"
       - uses: actions/upload-artifact@v4
         with:
           name: EPOCHS-debug-apk
