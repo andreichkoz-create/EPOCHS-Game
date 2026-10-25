@@ -109,18 +109,83 @@ const meshes=new Map();const ray=new THREE.Raycaster(),mouse=new THREE.Vector2()
 function updatePeople(){for(const p of world.people){if(!p.alive){if(meshes.has(p.id)){scene.remove(meshes.get(p.id));meshes.delete(p.id)}continue}if(!meshes.has(p.id)){const mesh=buildHuman(p.id);scene.add(mesh);meshes.set(p.id,mesh)}const mesh=meshes.get(p.id);mesh.position.set(p.x,height(p.x,p.z),p.z);mesh.scale.setScalar(p.age<12?.62:1);mesh.rotation.y=Math.atan2(p.tx-p.x,p.tz-p.z);const walking=p.action!=='спит'&&dist(p,{x:p.tx,z:p.tz})>1;mesh.children.slice(3).forEach((limb,i)=>{limb.rotation.x=walking?Math.sin(performance.now()*.008+i*Math.PI)*.45:0});mesh.position.y+=walking?Math.abs(Math.sin(performance.now()*.008))*.1:0}}
 renderer.domElement.addEventListener('pointerup',ev=>{if(Math.abs(ev.movementX)+Math.abs(ev.movementY)>8)return;mouse.x=(ev.clientX/innerWidth)*2-1;mouse.y=-(ev.clientY/innerHeight)*2+1;ray.setFromCamera(mouse,camera);const hits=ray.intersectObjects([...meshes.values()],true);if(hits.length){selected=hits[0].object.userData.id;$('#observerPanel').classList.add('open');renderUI()}});
 let paused=false,speed=1,truthMode=false,tAccum=0,uiAccum=0,last=performance.now();
+// GENESIS cognition v0.5: each person retains an autobiographical record,
+// limited beliefs, autonomous curiosity and experimental outcomes.
+// These are computational self-models, not claims of subjective consciousness.
+function initMind(p){
+ if(p.mind)return;
+ p.mind={identity:{name:p.name,born:p.birth},curiosity:rnd(.25,.9),caution:rnd(.2,.8),beliefs:{},episodes:[],intent:'выжить',experiments:0,successful:0,lastTrial:-100};
+ p.inventory=p.inventory||{камни:0,ветки:0,острые_камни:0};
+}
+function remember(p,kind,message){
+ initMind(p);p.mind.episodes.push({day:Math.floor(world.day),kind,message});
+ p.mind.episodes=p.mind.episodes.slice(-26);
+}
+function hypothesis(p,key,amount,result){
+ initMind(p);const entry=p.mind.beliefs[key]||{trials:0,successes:0,confidence:0};
+ entry.trials++;if(result)entry.successes++;entry.confidence=entry.successes/entry.trials;
+ p.mind.beliefs[key]=entry;p.mind.experiments++;
+ if(result)p.mind.successful++;
+ knowledge(p,key,amount*(result?3:1));
+}
+function think(p,dt){
+ initMind(p);
+ if(p.hunger>65)p.mind.intent='найти пищу';
+ else if(p.thirst>60)p.mind.intent='найти воду';
+ else if(p.cold>25)p.mind.intent='сохранить тепло';
+ else if(p.energy<20)p.mind.intent='отдохнуть';
+ else p.mind.intent='исследовать неизвестное';
+ if(world.day-p.mind.lastTrial<.4||p.hunger>48||p.thirst>48||p.energy<30)return;
+ if(Math.random()>dt*p.mind.curiosity*.85)return;
+ const rock=closest(stones,p);
+ if(rock&&dist(p,rock)<7){
+   p.mind.lastTrial=world.day;p.action='изучает камень';p.tx=rock.x;p.tz=rock.z;
+ }else{
+  const bush=closest(berryBushes,p);
+  if(bush&&dist(p,bush)<7){p.action='исследует растение';p.tx=bush.x;p.tz=bush.z;p.mind.lastTrial=world.day}
+ }
+}
+function experiment(p,dt){
+ initMind(p);
+ if(p.action==='изучает камень'){
+  const rock=closest(stones,p);
+  if(!rock||dist(p,rock)>2)return;
+  if(Math.random()<dt*.7){
+   const success=Math.random()<(.1+rock.quality*.5+(p.knowledge['свойства камня']||0)*.002);
+   hypothesis(p,'раскалывание камней',1,success);
+   p.inventory.камни=(p.inventory.камни||0)+1;
+   if(success){
+    p.inventory.острые_камни=(p.inventory.острые_камни||0)+1;
+    remember(p,'открытие','После удара по камню появился острый край.');
+    if(!world.discoveries.includes('Острые осколки')){
+      world.discoveries.push('Острые осколки');log(world,p.name+' впервые обнаружил острый осколок камня.')}
+   }else remember(p,'опыт','Попытка изменить камень не дала пользы.');
+   p.action='осмысливает опыт';p.mind.lastTrial=world.day;
+  }
+ }else if(p.action==='исследует растение'){
+  const bush=closest(berryBushes,p);
+  if(bush&&dist(p,bush)<2&&Math.random()<dt*.55){
+   const safe=Math.random()<.75;
+   hypothesis(p,'ягоды могут быть пищей',1,safe);
+   if(safe&&bush.food>0){bush.food=Math.max(0,bush.food-1);p.hunger=Math.max(0,p.hunger-12);
+    remember(p,'опыт','Некоторые ягоды уменьшили голод.');
+   }else{p.health=Math.max(1,p.health-2);remember(p,'опыт','Это растение могло причинить вред.')}
+   p.action='осмысливает опыт';p.mind.lastTrial=world.day;
+  }
+ }
+}
 function tick(dt){
  world.day+=dt;
  const hour=(world.day%1)*24;const season=seasonName();const winter=season==='Зима';
  for(const bush of berryBushes)bush.food=Math.min(bush.capacity,bush.food+dt*(winter?.035:season==='Лето'?.7:.3));
  for(const p of world.people){if(!p.alive)continue;
- p.age=(world.day-p.birth)/365;p.knowledge=p.knowledge||{};p.action=p.action||'исследует';p.skills=p.skills||{};p.cold=p.cold||0;const shelter=chooseShelter(p);for(const a of fauna)if(a.alive)observed(p,a,'поведение животных',dt*.35);for(const b of berryBushes)if(b.food>1)observed(p,b,'съедобные растения',dt*.4);for(const rock of stones)observed(p,rock,'свойства камня',dt*.12);for(const c of caves)observed(p,c,'укрытия',dt*.45);p.hunger=Math.min(110,p.hunger+dt*13);p.thirst=Math.min(110,p.thirst+dt*18);
+ initMind(p);p.age=(world.day-p.birth)/365;p.knowledge=p.knowledge||{};p.action=p.action||'исследует';p.skills=p.skills||{};p.cold=p.cold||0;const shelter=chooseShelter(p);for(const a of fauna)if(a.alive)observed(p,a,'поведение животных',dt*.35);for(const b of berryBushes)if(b.food>1)observed(p,b,'съедобные растения',dt*.4);for(const rock of stones)observed(p,rock,'свойства камня',dt*.12);for(const c of caves)observed(p,c,'укрытия',dt*.45);p.hunger=Math.min(110,p.hunger+dt*13);think(p,dt);p.thirst=Math.min(110,p.thirst+dt*18);
  p.energy=Math.max(0,p.energy-dt*12);
  if(p.thirst>95||p.hunger>100)p.health-=dt*25;
  if(p.age>68)p.health-=dt*2;if(winter&&dist(p,shelter)>7){p.cold+=dt*4;if(p.cold>35)p.health-=dt*12}else p.cold=Math.max(0,p.cold-dt*9);
  if(p.health<=0||p.age>95){p.alive=false;log(world,p.name+' умер.');continue}
  if(hour>=21||hour<5||p.energy<12){if((p.knowledge['укрытия']||0)>7&&dist(p,shelter)>3){p.action='ищет укрытие';p.tx=shelter.x;p.tz=shelter.z}else{p.action='спит';p.energy=Math.min(100,p.energy+dt*(dist(p,shelter)<6?70:43));p.tx=p.x;p.tz=p.z;continue}}
- if(p.action==='ищет укрытие'){}else if(winter&&(p.knowledge['укрытия']||0)>10&&p.cold>18){assign(p,'ищет укрытие',shelter)}else if(p.thirst>40){assign(p,'ищет воду',{x:-4,z:p.z})}
+ if(p.action==='ищет укрытие'||p.action==='изучает камень'||p.action==='исследует растение'){}else if(winter&&(p.knowledge['укрытия']||0)>10&&p.cold>18){assign(p,'ищет укрытие',shelter)}else if(p.thirst>40){assign(p,'ищет воду',{x:-4,z:p.z})}
  else if(p.hunger>32){
   const bush=closest(berryBushes,p,b=>b.food>=1);
   const animal=closest(fauna,p,a=>a.alive);
@@ -134,7 +199,7 @@ function tick(dt){
  }
  const d=dist(p,{x:p.tx,z:p.tz});
  if(d>.9){const step=Math.min(d,dt*25);p.x+=(p.tx-p.x)/d*step;p.z+=(p.tz-p.z)/d*step}
- else if(p.action==='ищет воду'){p.action='пьёт';p.thirst=Math.max(0,p.thirst-dt*140);p.skills.вода=(p.skills.вода||0)+dt*2}
+ else if(p.action==='изучает камень'||p.action==='исследует растение'){experiment(p,dt)}else if(p.action==='ищет воду'){p.action='пьёт';p.thirst=Math.max(0,p.thirst-dt*140);p.skills.вода=(p.skills.вода||0)+dt*2}
  else if(p.action==='собирает ягоды'){const bush=closest(berryBushes,p,b=>b.food>=1);
  if(bush&&dist(p,bush)<3){bush.food=Math.max(0,bush.food-dt*4);p.hunger=Math.max(0,p.hunger-dt*75);p.skills.сбор=(p.skills.сбор||0)+dt*3}}
  else if(p.action==='экспериментирует с охотой'){const a=closest(fauna,p,q=>q.alive);
@@ -142,7 +207,7 @@ function tick(dt){
  if(a&&dist(p,a)<3&&Math.random()<dt*(.025+(p.knowledge['приёмы охоты']||0)*.004)){a.alive=false;p.hunger=Math.max(0,p.hunger-75);p.energy=Math.max(0,p.energy-12);log(world,p.name+' добыл '+a.species+' после охоты.')}}
  else if(p.action==='пробует добыть рыбу'){p.skills.рыбалка=(p.skills.рыбалка||0)+dt; if(Math.random()<dt*.16){p.hunger=Math.max(0,p.hunger-55);log(world,p.name+' поймал рыбу.')}}
  else if(p.action==='общается'){const q=closest(world.people,p,a=>a.alive&&a.id!==p.id);if(q&&dist(p,q)<3){p.energy=Math.min(100,p.energy+dt*12);p.skills.наблюдение=(p.skills.наблюдение||0)+dt*1.4;
- if(q.skills.сбор>p.skills.сбор+1)p.skills.сбор+=dt*.3}}
+ if(q.skills.сбор>p.skills.сбор+1)p.skills.сбор+=dt*.3;initMind(q);if(Math.random()<dt*.25){const key=Object.keys(q.mind.beliefs).find(k=>q.mind.beliefs[k].successes>0);if(key){hypothesis(p,key,.2,true);remember(p,'обучение','Наблюдал за '+q.name+': '+key)}}}}
  if((p.knowledge['свойства камня']||0)>45&&!world.discoveries.includes('Камни различаются')){world.discoveries.push('Камни различаются');log(world,p.name+' заметил, что камни обладают разными свойствами.')}if(p.skills.сбор>7&&!world.discoveries.includes('Пути сбора')){world.discoveries.push('Пути сбора');log(world,p.name+' освоил устойчивые маршруты поиска пищи.')}
  p.memory=p.memory.slice(-14)
  }
@@ -150,7 +215,7 @@ function tick(dt){
  const a=world.people.find(p=>p.alive&&p.sex==='ж'&&p.age>=18&&p.age<40),b=world.people.find(p=>p.alive&&p.sex==='м'&&p.age>=18&&p.age<50);
  if(a&&b&&dist(a,b)<24){const baby=born(world,0,a.x,a.z);baby.kin=[a.id,b.id];world.people.push(baby);log(world,baby.name+' родился у '+a.name+' и '+b.name+'.')}}
 }
-function renderUI(){$('#day').textContent=Math.floor(world.day);$('#season').textContent=seasonName();$('#clock').textContent=String(Math.floor((world.day%1)*24)).padStart(2,'0')+':'+String(Math.floor((world.day%1*24%1)*60)).padStart(2,'0');$('#count').textContent=world.people.filter(p=>p.alive).length;$('#gen').textContent=Math.max(1,...world.people.map(p=>p.kin.length?2:1));const p=world.people.find(p=>p.id===selected);$('#subject').textContent=p?p.name:'Долина истоков';$('#details').innerHTML=p?'<div class="stat">Возраст <b>'+p.age.toFixed(1)+'</b></div><div class="stat">Здоровье <b>'+Math.max(0,p.health).toFixed(0)+'</b></div><div class="stat">Жажда <b>'+p.thirst.toFixed(0)+'</b></div><div class="stat">Голод <b>'+p.hunger.toFixed(0)+'</b></div><h3>Навыки</h3>'+Object.entries(p.skills).map(([k,v])=>'<div class="stat">'+k+' <b>'+v.toFixed(1)+'</b></div>').join('')+'<h3>Исследованные явления</h3>'+Object.entries(p.knowledge||{}).filter(([k,v])=>v>1).map(([k,v])=>'<div class="stat">'+k+' <b>'+Math.round(v)+'%</b></div>').join('')+'<h3>Субъективная память</h3>'+p.memory.map(x=>'<div class="entry">'+x+'</div>').join(''):'Мир существует без ваших команд. Нажмите на жителя, чтобы увидеть его развитие. Открытия возникают из приобретённых навыков.';$('#chronicle').innerHTML=(truthMode?world.truth.slice(-12).reverse():world.chronicle.slice(0,12)).map(e=>'<div class="entry"><span class="tag">ДЕНЬ '+e.day+'</span><br>'+e.message+'</div>').join('');$('#history').textContent=truthMode?'Показать память мира':'Показать объективную историю'}
+function renderUI(){$('#day').textContent=Math.floor(world.day);$('#season').textContent=seasonName();$('#clock').textContent=String(Math.floor((world.day%1)*24)).padStart(2,'0')+':'+String(Math.floor((world.day%1*24%1)*60)).padStart(2,'0');$('#count').textContent=world.people.filter(p=>p.alive).length;$('#gen').textContent=Math.max(1,...world.people.map(p=>p.kin.length?2:1));const p=world.people.find(p=>p.id===selected);$('#subject').textContent=p?p.name:'Долина истоков';$('#details').innerHTML=p?'<div class="stat">Возраст <b>'+p.age.toFixed(1)+'</b></div><div class="stat">Здоровье <b>'+Math.max(0,p.health).toFixed(0)+'</b></div><div class="stat">Жажда <b>'+p.thirst.toFixed(0)+'</b></div><div class="stat">Голод <b>'+p.hunger.toFixed(0)+'</b></div><h3>Навыки</h3>'+Object.entries(p.skills).map(([k,v])=>'<div class="stat">'+k+' <b>'+v.toFixed(1)+'</b></div>').join('')+'<h3>Личность и намерения</h3><div class="stat">Цель <b>'+((p.mind||{}).intent||'выжить')+'</b></div><div class="stat">Экспериментов <b>'+((p.mind||{}).experiments||0)+'</b></div><div class="stat">Успешных <b>'+((p.mind||{}).successful||0)+'</b></div><h3>Гипотезы</h3>'+Object.entries((p.mind||{}).beliefs||{}).map(([k,v])=>'<div class="stat">'+k+' <b>'+Math.round(v.confidence*100)+'%</b></div>').join('')+'<h3>Личный опыт</h3>'+((p.mind||{}).episodes||[]).slice(-6).reverse().map(e=>'<div class="entry">'+e.message+'</div>').join('')+'<h3>Исследованные явления</h3>'+Object.entries(p.knowledge||{}).filter(([k,v])=>v>1).map(([k,v])=>'<div class="stat">'+k+' <b>'+Math.round(v)+'%</b></div>').join('')+'<h3>Субъективная память</h3>'+p.memory.map(x=>'<div class="entry">'+x+'</div>').join(''):'Мир существует без ваших команд. Нажмите на жителя, чтобы увидеть его развитие. Открытия возникают из приобретённых навыков.';$('#chronicle').innerHTML=(truthMode?world.truth.slice(-12).reverse():world.chronicle.slice(0,12)).map(e=>'<div class="entry"><span class="tag">ДЕНЬ '+e.day+'</span><br>'+e.message+'</div>').join('');$('#history').textContent=truthMode?'Показать память мира':'Показать объективную историю'}
 function save(){try{localStorage.setItem('genesis-world-v1',JSON.stringify(world));$('#save').textContent='✓ Сохранено в браузере'}catch{$('#save').textContent='Сохранение недоступно'}}
 function animate(now){requestAnimationFrame(animate);const delta=Math.min(.08,(now-last)/1000);last=now;controls.update();illuminate();animateEcology(delta);if(!paused){tAccum+=delta*speed*.5;let iter=0;while(tAccum>=.25&&iter++<25){tick(.25);tAccum-=.25}}uiAccum+=delta;if(uiAccum>.5){updatePeople();renderUI();uiAccum=0}renderer.render(scene,camera)}
 $('#openPanel').onclick=()=>$('#observerPanel').classList.toggle('open');$('#closePanel').onclick=()=>$('#observerPanel').classList.remove('open');$('#play').onclick=()=>{paused=!paused;$('#play').textContent=paused?'▶ Продолжить':'⏸ Пауза'};document.querySelectorAll('[data-speed]').forEach(b=>b.onclick=()=>{speed=Number(b.dataset.speed);document.querySelectorAll('[data-speed]').forEach(x=>x.classList.toggle('active',x===b))});$('#history').onclick=()=>{truthMode=!truthMode;renderUI()};$('#rewrite').onclick=()=>{world.revision++;for(const p of world.people)if(p.alive)p.memory=['Эта долина всегда была такой, сколько я себя помню.'];world.truth.push({day:Math.floor(world.day),message:'ОБЪЕКТИВНО: наблюдатель переписал субъективную память жителей. Ревизия '+world.revision});world.chronicle.unshift({day:Math.floor(world.day),message:'Долина кажется жителям неизменной.'});renderUI();save()};$('#reset').onclick=()=>{if(confirm('Создать новый мир? Текущее локальное сохранение будет заменено.')){world=newWorld();selected=null;updatePeople();renderUI();save()}};addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});setInterval(()=>{save();cloudSave()},12000);addEventListener('pagehide',save);updatePeople();renderUI();cloudRead();requestAnimationFrame(animate);
