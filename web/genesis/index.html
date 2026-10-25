@@ -224,7 +224,7 @@ function tick(dt){
  else if(p.hunger>24){
   const bush=closest(berryBushes,p,b=>b.food>=1);
   const animal=closest(fauna,p,a=>a.alive);
-  if(bush&&(p.knowledge['съедобные растения']||0)>6&&(!animal||dist(p,bush)<dist(p,animal)*1.7||(p.knowledge['поведение животных']||0)<35))assign(p,'собирает ягоды',bush);
+  if(bush&&(!animal||dist(p,bush)<dist(p,animal)*1.7||(p.knowledge['поведение животных']||0)<35))assign(p,'собирает ягоды',bush);
   else if(animal&&(p.knowledge['поведение животных']||0)>35&&(p.knowledge['свойства камня']||0)>22)assign(p,'экспериментирует с охотой',animal);
   else if((p.knowledge['поведение животных']||0)>12)assign(p,'пробует добыть рыбу',{x:-4,z:p.z});else {p.action='ищет пищу';p.tx=rnd(-42,42);p.tz=rnd(-42,42)}
  }else{
@@ -236,7 +236,7 @@ function tick(dt){
  if(d>.9){const step=Math.min(d,dt*25);p.x+=(p.tx-p.x)/d*step;p.z+=(p.tz-p.z)/d*step}
  else if(p.action==='изучает камень'||p.action==='исследует растение'){experiment(p,dt)}else if(p.action==='ищет воду'){p.action='пьёт';p.thirst=Math.max(0,p.thirst-dt*140);p.skills.вода=(p.skills.вода||0)+dt*2}
  else if(p.action==='собирает ягоды'){const bush=closest(berryBushes,p,b=>b.food>=1);
- if(bush&&dist(p,bush)<3){bush.food=Math.max(0,bush.food-dt*4);p.hunger=Math.max(0,p.hunger-dt*75);p.skills.сбор=(p.skills.сбор||0)+dt*3}}
+ if(bush&&dist(p,bush)<3){bush.food=Math.max(0,bush.food-dt*4);p.hunger=Math.max(0,p.hunger-dt*75);knowledge(p,'съедобные растения',dt*1.5);p.skills.сбор=(p.skills.сбор||0)+dt*3}}
  else if(p.action==='экспериментирует с охотой'){const a=closest(fauna,p,q=>q.alive);
  p.skills.охота=(p.skills.охота||0)+dt*.3;knowledge(p,'приёмы охоты',dt*.7);
  if(a&&dist(p,a)<3&&Math.random()<dt*(.025+(p.knowledge['приёмы охоты']||0)*.004)){a.alive=false;p.hunger=Math.max(0,p.hunger-75);p.energy=Math.max(0,p.energy-12);log(world,p.name+' добыл '+a.species+' после охоты.')}}
