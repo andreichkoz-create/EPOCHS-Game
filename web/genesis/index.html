@@ -103,7 +103,65 @@ function illuminate(){const t=((world.day%1)+1)%1,phase=Math.sin(t*Math.PI*2-Mat
  const daylight=Math.max(0,phase);sun.intensity=.12+daylight*2.7;ambient.intensity=.18+daylight*1.85;
  sun.position.set(Math.cos(t*Math.PI*2)*60,5+phase*75,20);
  const sky=new THREE.Color('#0b1624').lerp(new THREE.Color('#9cb1aa'),Math.max(.04,daylight));
- scene.background=sky;scene.fog.color.copy(sky);ground.material.color.set(seasonName()==='Зима'?'#83908a':seasonName()==='Осень'?'#79774a':'#59754b');river.material.color.set(daylight>.2?'#548b94':'#254f62');river.material.opacity=.72+daylight*.18}
+ scene.background=sky;scene.fog.color.copy(sky);river.material.color.set(daylight>.2?'#548b94':'#254f62');river.material.opacity=.72+daylight*.18}
+
+
+const snowGeometry=geo.clone();const snowPosition=snowGeometry.attributes.position;
+for(let i=0;i<snowPosition.count;i++)snowPosition.setY(i,snowPosition.getY(i)+.095);
+snowGeometry.computeVertexNormals();
+const snowCover=new THREE.Mesh(snowGeometry,new THREE.MeshStandardMaterial({color:'#e6eced',roughness:.96,transparent:true,opacity:.94,depthWrite:false}));
+snowCover.visible=false;snowCover.receiveShadow=true;scene.add(snowCover);
+const snowflakes=new THREE.Group();scene.add(snowflakes);
+const flakeGeo=new THREE.SphereGeometry(.055,4,3),flakeMat=new THREE.MeshBasicMaterial({color:'#f4f7ff'});
+for(let i=0;i<140;i++){const f=new THREE.Mesh(flakeGeo,flakeMat);f.position.set(rnd(-65,65),rnd(2,30),rnd(-65,65));snowflakes.add(f)}
+snowflakes.visible=false;
+const autumnLeaves=new THREE.Group();scene.add(autumnLeaves);
+const leafGeo=new THREE.PlaneGeometry(.26,.4),leafMat=new THREE.MeshBasicMaterial({color:'#d6a34d',side:THREE.DoubleSide});
+for(let i=0;i<90;i++){const leaf=new THREE.Mesh(leafGeo,leafMat);leaf.position.set(rnd(-58,58),rnd(.4,10),rnd(-58,58));leaf.rotation.set(rnd(0,4),rnd(0,6),rnd(0,4));autumnLeaves.add(leaf)}
+autumnLeaves.visible=false;
+let lastVisualSeason='';
+function applySeasonAppearance(){
+ const current=seasonName();if(current===lastVisualSeason)return;lastVisualSeason=current;
+ const palette={
+ 'Весна':{ground:'#668e54',trees:'#43824b',grass:'#91b867',bush:'#47894a',fog:'#a1b9ae'},
+ 'Лето':{ground:'#597c39',trees:'#285f34',grass:'#83a94d',bush:'#39763a',fog:'#b0c4aa'},
+ 'Осень':{ground:'#8b7849',trees:'#b66d36',grass:'#a38a51',bush:'#8d733b',fog:'#b7a892'},
+ 'Зима':{ground:'#c6d0ca',trees:'#879287',grass:'#bdc9c7',bush:'#8e9992',fog:'#b7cbd3'}
+ };
+ const p=palette[current];ground.material.color.set(p.ground);crowns.material.color.set(p.trees);
+ grass.material.color.set(p.grass);bushMat.color.set(p.bush);scene.fog.color.set(p.fog);
+ snowCover.visible=current==='Зима';snowflakes.visible=current==='Зима';autumnLeaves.visible=current==='Осень';
+}
+function animateSeasonParticles(delta,now){
+ if(snowflakes.visible)for(const f of snowflakes.children){f.position.y-=delta*2.8;f.position.x+=Math.sin(now*.0006+f.position.z)*delta*.32;if(f.position.y<0)f.position.y=25}
+ if(autumnLeaves.visible)for(const f of autumnLeaves.children){f.position.y-=delta*.8;f.rotation.y+=delta;f.position.x+=delta*.35;if(f.position.y<0)f.position.y=8}
+}
+function animateHumanActions(now){
+ const t=now*.001;
+ for(const p of world.people){if(!p.alive)continue;const g=meshes.get(p.id);if(!g)continue;
+ const parts=g.children;if(parts.length<7)continue;
+ const moving=dist(p,{x:p.tx,z:p.tz})>1&&p.action!=='спит';
+ const phase=t*6+p.id*1.71,cycle=Math.sin(phase);
+ const activity=p.action||'';
+ for(let i=3;i<7;i++)parts[i].rotation.x=0;
+ parts[0].rotation.z=Math.sin(t*1.5+p.id)*.012;
+ parts[1].rotation.y=Math.sin(t*.75+p.id)*.12;
+ g.rotation.z=0;
+ if(activity==='спит'){g.rotation.z=1.25;parts[0].position.y=.6;continue}
+ parts[0].position.y=1.15;
+ if(moving){
+ parts[3].rotation.x=cycle*.58;parts[4].rotation.x=-cycle*.58;
+ parts[5].rotation.x=-cycle*.7;parts[6].rotation.x=cycle*.7;
+ parts[0].position.y=1.15+Math.abs(cycle)*.035;
+ }else if(/ягоды|камень|растение|рыбу|пьёт/.test(activity)){
+ parts[0].rotation.x=.22;parts[3].rotation.x=-.55+Math.sin(t*4+p.id)*.24;
+ parts[4].rotation.x=-.5-Math.sin(t*4+p.id)*.22;
+ }else if(activity==='общается'){
+ parts[3].rotation.z=.24+Math.sin(t*2+p.id)*.12;
+ parts[1].rotation.y=Math.sin(t*1.3+p.id)*.22;
+ }
+ }
+}
 
 const meshes=new Map();const ray=new THREE.Raycaster(),mouse=new THREE.Vector2();let selected=null;
 function updatePeople(){for(const p of world.people){if(!p.alive){if(meshes.has(p.id)){scene.remove(meshes.get(p.id));meshes.delete(p.id)}continue}if(!meshes.has(p.id)){const mesh=buildHuman(p.id);scene.add(mesh);meshes.set(p.id,mesh)}const mesh=meshes.get(p.id);mesh.position.set(p.x,height(p.x,p.z),p.z);mesh.scale.setScalar(p.age<12?.62:1);mesh.rotation.y=Math.atan2(p.tx-p.x,p.tz-p.z);const walking=p.action!=='спит'&&dist(p,{x:p.tx,z:p.tz})>1;mesh.children.slice(3).forEach((limb,i)=>{limb.rotation.x=walking?Math.sin(performance.now()*.008+i*Math.PI)*.45:0});mesh.position.y+=walking?Math.abs(Math.sin(performance.now()*.008))*.1:0}}
@@ -252,7 +310,7 @@ function tick(dt){
 }
 function renderUI(){$('#day').textContent=Math.floor(world.day);$('#season').textContent=seasonName();$('#clock').textContent=String(Math.floor((world.day%1)*24)).padStart(2,'0')+':'+String(Math.floor((world.day%1*24%1)*60)).padStart(2,'0');$('#count').textContent=world.people.filter(p=>p.alive).length;$('#gen').textContent=Math.max(1,...world.people.map(p=>p.kin.length?2:1));const p=world.people.find(p=>p.id===selected);$('#subject').textContent=p?p.name:'Долина истоков';$('#details').innerHTML=p?'<div class="stat">Возраст <b>'+p.age.toFixed(1)+'</b></div><div class="stat">Здоровье <b>'+Math.max(0,p.health).toFixed(0)+'</b></div><div class="stat">Жажда <b>'+p.thirst.toFixed(0)+'</b></div><div class="stat">Голод <b>'+p.hunger.toFixed(0)+'</b></div><h3>Навыки</h3>'+Object.entries(p.skills).map(([k,v])=>'<div class="stat">'+k+' <b>'+v.toFixed(1)+'</b></div>').join('')+'<h3>Личность и намерения</h3><div class="stat">Цель <b>'+((p.mind||{}).intent||'выжить')+'</b></div><div class="stat">Экспериментов <b>'+((p.mind||{}).experiments||0)+'</b></div><div class="stat">Успешных <b>'+((p.mind||{}).successful||0)+'</b></div><h3>Гипотезы</h3>'+Object.entries((p.mind||{}).beliefs||{}).map(([k,v])=>'<div class="stat">'+k+' <b>'+Math.round(v.confidence*100)+'%</b></div>').join('')+'<h3>Предметы из экспериментов</h3><div class="stat">Создано <b>'+((p.artifacts||[]).length)+'</b></div>'+'<h3>Личный опыт</h3>'+((p.mind||{}).episodes||[]).slice(-6).reverse().map(e=>'<div class="entry">'+e.message+'</div>').join('')+'<h3>Исследованные явления</h3>'+Object.entries(p.knowledge||{}).filter(([k,v])=>v>1).map(([k,v])=>'<div class="stat">'+k+' <b>'+Math.round(v)+'%</b></div>').join('')+'<h3>Субъективная память</h3>'+p.memory.map(x=>'<div class="entry">'+x+'</div>').join(''):'Мир существует без ваших команд. Нажмите на жителя, чтобы увидеть его развитие. Открытия возникают из приобретённых навыков.';$('#chronicle').innerHTML=(truthMode?world.truth.slice(-12).reverse():world.chronicle.slice(0,12)).map(e=>'<div class="entry"><span class="tag">ДЕНЬ '+e.day+'</span><br>'+e.message+'</div>').join('');$('#history').textContent=truthMode?'Показать память мира':'Показать объективную историю'}
 function save(){try{localStorage.setItem('genesis-world-v1',JSON.stringify(world));$('#save').textContent='✓ Сохранено в браузере'}catch{$('#save').textContent='Сохранение недоступно'}}
-function animate(now){requestAnimationFrame(animate);const delta=Math.min(.08,(now-last)/1000);last=now;controls.update();illuminate();animateEcology(delta);if(!paused){tAccum+=delta*speed*.5;let iter=0;while(tAccum>=.25&&iter++<25){tick(.25);tAccum-=.25}}uiAccum+=delta;if(uiAccum>.5){updatePeople();renderUI();uiAccum=0}river.material.roughness=.14+.06*Math.sin(now*.001);renderer.render(scene,camera)}
+function animate(now){requestAnimationFrame(animate);const delta=Math.min(.08,(now-last)/1000);last=now;controls.update();illuminate();applySeasonAppearance();animateSeasonParticles(delta,now);animateEcology(delta);animateHumanActions(now);if(!paused){tAccum+=delta*speed*.5;let iter=0;while(tAccum>=.25&&iter++<25){tick(.25);tAccum-=.25}}uiAccum+=delta;if(uiAccum>.5){updatePeople();renderUI();uiAccum=0}river.material.roughness=.14+.06*Math.sin(now*.001);renderer.render(scene,camera)}
 $('#openPanel').onclick=()=>$('#observerPanel').classList.toggle('open');$('#closePanel').onclick=()=>$('#observerPanel').classList.remove('open');$('#play').onclick=()=>{paused=!paused;$('#play').textContent=paused?'▶ Продолжить':'⏸ Пауза'};document.querySelectorAll('[data-speed]').forEach(b=>b.onclick=()=>{speed=Number(b.dataset.speed);document.querySelectorAll('[data-speed]').forEach(x=>x.classList.toggle('active',x===b))});$('#history').onclick=()=>{truthMode=!truthMode;renderUI()};$('#rewrite').onclick=()=>{world.revision++;for(const p of world.people)if(p.alive)p.memory=['Эта долина всегда была такой, сколько я себя помню.'];world.truth.push({day:Math.floor(world.day),message:'ОБЪЕКТИВНО: наблюдатель переписал субъективную память жителей. Ревизия '+world.revision});world.chronicle.unshift({day:Math.floor(world.day),message:'Долина кажется жителям неизменной.'});renderUI();save()};$('#reset').onclick=()=>{if(!confirm('Обнулить мир и начать сначала? Все жители, открытия и локальная история текущего мира будут удалены.'))return;
  for(const mesh of meshes.values())scene.remove(mesh);meshes.clear();
  world=newWorld();selected=null;tAccum=0;paused=false;speed=1;
