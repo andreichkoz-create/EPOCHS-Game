@@ -15,7 +15,7 @@
  .panelToggle{display:inline-block}.mobileInfo{display:block;position:fixed;top:95px;left:9px;background:#10211ccc;color:#c5d6ca;font-size:10px;padding:6px 9px;border-radius:8px;pointer-events:none}
  .hint{display:none}
 }
-</style></head><body><div id="view"></div><div class="top"><div><div class="brand">GENESIS</div><div class="small">АЛЬТЕРНАТИВНОЕ ЧЕЛОВЕЧЕСТВО · ОБСЕРВАТОРИЯ</div></div><div class="spacer"></div><div>ДЕНЬ <strong id="day">0</strong></div><div>ЖИТЕЛИ <strong id="count">12</strong></div><div>ПОКОЛЕНИЕ <strong id="gen">1</strong></div></div><aside class="panel" id="observerPanel"><button class="panelClose" id="closePanel">✕</button><div class="small">НАБЛЮДЕНИЕ / МИР 001</div><h2 id="subject">Долина истоков</h2><div id="details">Выберите жителя нажатием на фигуру в мире. Камеру можно поворачивать мышью и приближать колесом.</div><h3>Хроника</h3><div id="chronicle"></div><button id="history">Показать объективную историю</button></aside><div class="mobileInfo">Перемещайте камеру пальцем · нажмите на жителя</div><div class="hint">Перетаскивание — вращение · Колесо — масштаб · Нажатие на жителя — наблюдение</div><div class="bottom"><button class="panelToggle" id="openPanel">☰ Данные</button><button id="play">⏸ Пауза</button><button data-speed="1" class="active">×1</button><button data-speed="10">×10</button><button data-speed="100">×100</button><button id="rewrite">⟲ Переписать память</button><button id="reset">Новый мир</button><span class="small" id="save">Локальное сохранение</span></div>
+</style></head><body><div id="view"></div><div class="top"><div><div class="brand">GENESIS</div><div class="small">АЛЬТЕРНАТИВНОЕ ЧЕЛОВЕЧЕСТВО · ОБСЕРВАТОРИЯ</div></div><div class="spacer"></div><div>ДЕНЬ <strong id="day">0</strong> · <strong id="clock">06:00</strong></div><div>ЖИТЕЛИ <strong id="count">12</strong></div><div>ПОКОЛЕНИЕ <strong id="gen">1</strong></div></div><aside class="panel" id="observerPanel"><button class="panelClose" id="closePanel">✕</button><div class="small">НАБЛЮДЕНИЕ / МИР 001</div><h2 id="subject">Долина истоков</h2><div id="details">Выберите жителя нажатием на фигуру в мире. Камеру можно поворачивать мышью и приближать колесом.</div><h3>Хроника</h3><div id="chronicle"></div><button id="history">Показать объективную историю</button></aside><div class="mobileInfo">Перемещайте камеру пальцем · нажмите на жителя</div><div class="hint">Перетаскивание — вращение · Колесо — масштаб · Нажатие на жителя — наблюдение</div><div class="bottom"><button class="panelToggle" id="openPanel">☰ Данные</button><button id="play">⏸ Пауза</button><button data-speed="1" class="active">×1</button><button data-speed="10">×10</button><button data-speed="100">×100</button><button id="rewrite">⟲ Переписать память</button><button id="reset">Новый мир</button><span class="small" id="save">Локальное сохранение</span></div>
 <script type="module">
 import * as THREE from 'https://esm.sh/three@0.180.0';
 import {OrbitControls} from 'https://esm.sh/three@0.180.0/examples/jsm/controls/OrbitControls.js';
@@ -65,21 +65,84 @@ function buildHuman(id){
  for(const side of [-1,1]){part(skin,side*.5,1.16,0,.14,.43,.15);part(skin,side*.2,.45,0,.17,.46,.19)}
  return group;
 }
+
+const ambient=scene.children.find(o=>o.isHemisphereLight);
+const berryBushes=[];const bushMeshes=[];const berryGeo=new THREE.SphereGeometry(.75,7,5);
+const bushMat=new THREE.MeshStandardMaterial({color:'#35633e'}),fruitMat=new THREE.MeshStandardMaterial({color:'#ba4255'});
+for(let i=0;i<65;i++){const x=rnd(-45,45),z=rnd(-45,45);if(Math.abs(x+4)<7)continue;
+ const bush={x,z,food:rnd(2,7),capacity:7};berryBushes.push(bush);
+ const g=new THREE.Group(),leaves=new THREE.Mesh(berryGeo,bushMat);leaves.position.y=.9;leaves.scale.set(1.4,.9,1.3);g.add(leaves);
+ for(let b=0;b<4;b++){const berry=new THREE.Mesh(new THREE.SphereGeometry(.13,5,4),fruitMat);berry.position.set(rnd(-.65,.65),rnd(.8,1.4),rnd(-.5,.5));g.add(berry)}
+ g.position.set(x,height(x,z),z);scene.add(g);bushMeshes.push(g)}
+const fauna=[];const faunaMeshes=[];const deerBody=new THREE.SphereGeometry(1,9,7);
+for(let i=0;i<17;i++){const animal={id:i,x:rnd(-38,38),z:rnd(-38,38),tx:rnd(-38,38),tz:rnd(-38,38),alive:true,energy:90,species:i<12?'олень':'кабан'};fauna.push(animal);
+ const g=new THREE.Group();const mat=new THREE.MeshStandardMaterial({color:i<12?'#9a7051':'#51483d'});
+ const torso=new THREE.Mesh(deerBody,mat);torso.scale.set(i<12?1.1:.85,.55,.46);torso.position.y=1.1;g.add(torso);
+ const head=new THREE.Mesh(deerBody,mat);head.scale.set(.35,.38,.35);head.position.set(.85,1.35,0);g.add(head);
+ for(const x of [-.62,.6])for(const z of [-.28,.28]){const leg=new THREE.Mesh(new THREE.CylinderGeometry(.10,.13,.85,5),mat);leg.position.set(x,.46,z);g.add(leg)}
+ g.userData.animal=i;scene.add(g);faunaMeshes.push(g)}
+const fish=[];for(let i=0;i<20;i++){const f={z:rnd(-70,70),speed:rnd(.5,1.7)};fish.push(f);
+ const m=new THREE.Mesh(new THREE.ConeGeometry(.25,.9,5),new THREE.MeshStandardMaterial({color:'#b7d7cb',metalness:.4,roughness:.2}));m.rotation.x=Math.PI/2;m.position.set(-4+rnd(-2,2),.85,f.z);scene.add(m);f.mesh=m}
+function closest(list,p,condition=()=>true){let best=null,d=Infinity;for(const item of list){if(!condition(item))continue;const dd=dist(p,item);if(dd<d){d=dd;best=item}}return best}
+function assign(p,job,target){if(p.action!==job||dist(p,{x:p.tx,z:p.tz})<1){p.action=job;p.tx=target.x;p.tz=target.z}}
+function animateEcology(delta){for(let i=0;i<fauna.length;i++){const a=fauna[i],mesh=faunaMeshes[i];mesh.visible=a.alive;if(!a.alive)continue;
+ if(dist(a,{x:a.tx,z:a.tz})<2){a.tx=rnd(-44,44);a.tz=rnd(-44,44)}
+ const d=dist(a,{x:a.tx,z:a.tz});if(d>.1){const step=Math.min(d,delta*1.8);a.x+=(a.tx-a.x)/d*step;a.z+=(a.tz-a.z)/d*step}
+ mesh.position.set(a.x,height(a.x,a.z),a.z);mesh.rotation.y=Math.atan2(a.tx-a.x,a.tz-a.z)}
+ for(const f of fish){f.z+=delta*f.speed;if(f.z>80)f.z=-80;f.mesh.position.z=f.z}}
+function illuminate(){const t=((world.day%1)+1)%1,phase=Math.sin(t*Math.PI*2-Math.PI/2);
+ const daylight=Math.max(0,phase);sun.intensity=.12+daylight*2.7;ambient.intensity=.18+daylight*1.85;
+ sun.position.set(Math.cos(t*Math.PI*2)*60,5+phase*75,20);
+ const sky=new THREE.Color('#0b1624').lerp(new THREE.Color('#9cb1aa'),Math.max(.04,daylight));
+ scene.background=sky;scene.fog.color.copy(sky);river.material.color.set(daylight>.2?'#548b94':'#254f62')}
+
 const meshes=new Map();const ray=new THREE.Raycaster(),mouse=new THREE.Vector2();let selected=null;
-function updatePeople(){for(const p of world.people){if(!p.alive){if(meshes.has(p.id)){scene.remove(meshes.get(p.id));meshes.delete(p.id)}continue}if(!meshes.has(p.id)){const mesh=buildHuman(p.id);scene.add(mesh);meshes.set(p.id,mesh)}const mesh=meshes.get(p.id);mesh.position.set(p.x,height(p.x,p.z),p.z);mesh.scale.setScalar(p.age<12?.62:1)}}
+function updatePeople(){for(const p of world.people){if(!p.alive){if(meshes.has(p.id)){scene.remove(meshes.get(p.id));meshes.delete(p.id)}continue}if(!meshes.has(p.id)){const mesh=buildHuman(p.id);scene.add(mesh);meshes.set(p.id,mesh)}const mesh=meshes.get(p.id);mesh.position.set(p.x,height(p.x,p.z),p.z);mesh.scale.setScalar(p.age<12?.62:1);mesh.rotation.y=Math.atan2(p.tx-p.x,p.tz-p.z);const walking=p.action!=='спит'&&dist(p,{x:p.tx,z:p.tz})>1;mesh.children.slice(3).forEach((limb,i)=>{limb.rotation.x=walking?Math.sin(performance.now()*.008+i*Math.PI)*.45:0});mesh.position.y+=walking?Math.abs(Math.sin(performance.now()*.008))*.1:0}}
 renderer.domElement.addEventListener('pointerup',ev=>{if(Math.abs(ev.movementX)+Math.abs(ev.movementY)>8)return;mouse.x=(ev.clientX/innerWidth)*2-1;mouse.y=-(ev.clientY/innerHeight)*2+1;ray.setFromCamera(mouse,camera);const hits=ray.intersectObjects([...meshes.values()],true);if(hits.length){selected=hits[0].object.userData.id;$('#observerPanel').classList.add('open');renderUI()}});
 let paused=false,speed=1,truthMode=false,tAccum=0,uiAccum=0,last=performance.now();
-function tick(dt){world.day+=dt;for(const p of world.people){if(!p.alive)continue;p.age=(world.day-p.birth)/365;p.hunger+=dt*1.4;p.thirst+=dt*2.1;p.energy=Math.max(0,p.energy-dt*.55);if(p.thirst>75||p.hunger>80)p.health-=dt*1.7;if(p.age>68)p.health-=dt*.2;if(p.health<=0||p.age>95){p.alive=false;log(world,p.name+' умер.');continue}
-if(p.thirst>35){p.tx=-4+rnd(-2,2);p.tz=rnd(-45,45)}else if(p.hunger>38){p.tx=rnd(-40,40);p.tz=rnd(-40,40)}else if(dist(p,{x:p.tx,z:p.tz})<2){p.tx=rnd(-42,42);p.tz=rnd(-42,42)}
-const d=dist(p,{x:p.tx,z:p.tz});if(d>.1){const m=Math.min(d,dt*3);p.x+=(p.tx-p.x)*m/d;p.z+=(p.tz-p.z)*m/d}
-if(Math.abs(p.x+4)<4&&p.thirst>15){p.thirst=Math.max(0,p.thirst-dt*24);p.skills.вода+=dt*.09}
-if(p.hunger>17&&Math.random()<dt*.12){p.hunger=Math.max(0,p.hunger-38);p.skills.сбор++;if(p.skills.сбор===1){p.memory.push('Я нашёл пищу в долине.');log(world,p.name+' нашёл пищу самостоятельно.')}}
-for(const q of world.people){if(q.id===p.id||!q.alive||dist(p,q)>3)continue;if(q.skills.сбор>p.skills.сбор+2&&Math.random()<dt*.04){p.skills.сбор+=.3;p.skills.наблюдение+=.1;if(p.memory.length<12)p.memory.push('Я наблюдал за '+q.name+'.')}}
-if(p.skills.сбор>7&&!world.discoveries.includes('Пути сбора')){world.discoveries.push('Пути сбора');log(world,p.name+' освоил устойчивые маршруты поиска пищи.')}
-p.memory=p.memory.slice(-14)}
-if(Math.floor(world.day)%30===0&&Math.random()<dt*.09&&world.people.filter(p=>p.alive).length<65){const a=world.people.find(p=>p.alive&&p.sex==='ж'&&p.age>=18&&p.age<40),b=world.people.find(p=>p.alive&&p.sex==='м'&&p.age>=18&&p.age<50);if(a&&b&&dist(a,b)<24){const baby=born(world,0,a.x,a.z);baby.kin=[a.id,b.id];world.people.push(baby);log(world,baby.name+' родился у '+a.name+' и '+b.name+'.')}}}
-function renderUI(){$('#day').textContent=Math.floor(world.day);$('#count').textContent=world.people.filter(p=>p.alive).length;$('#gen').textContent=Math.max(1,...world.people.map(p=>p.kin.length?2:1));const p=world.people.find(p=>p.id===selected);$('#subject').textContent=p?p.name:'Долина истоков';$('#details').innerHTML=p?'<div class="stat">Возраст <b>'+p.age.toFixed(1)+'</b></div><div class="stat">Здоровье <b>'+Math.max(0,p.health).toFixed(0)+'</b></div><div class="stat">Жажда <b>'+p.thirst.toFixed(0)+'</b></div><div class="stat">Голод <b>'+p.hunger.toFixed(0)+'</b></div><h3>Навыки</h3>'+Object.entries(p.skills).map(([k,v])=>'<div class="stat">'+k+' <b>'+v.toFixed(1)+'</b></div>').join('')+'<h3>Субъективная память</h3>'+p.memory.map(x=>'<div class="entry">'+x+'</div>').join(''):'Мир существует без ваших команд. Нажмите на жителя, чтобы увидеть его развитие. Открытия возникают из приобретённых навыков.';$('#chronicle').innerHTML=(truthMode?world.truth.slice(-12).reverse():world.chronicle.slice(0,12)).map(e=>'<div class="entry"><span class="tag">ДЕНЬ '+e.day+'</span><br>'+e.message+'</div>').join('');$('#history').textContent=truthMode?'Показать память мира':'Показать объективную историю'}
+function tick(dt){
+ world.day+=dt;
+ const hour=(world.day%1)*24;
+ for(const bush of berryBushes)bush.food=Math.min(bush.capacity,bush.food+dt*.45);
+ for(const p of world.people){if(!p.alive)continue;
+ p.age=(world.day-p.birth)/365;p.action=p.action||'исследует';p.hunger=Math.min(110,p.hunger+dt*13);p.thirst=Math.min(110,p.thirst+dt*18);
+ p.energy=Math.max(0,p.energy-dt*12);
+ if(p.thirst>95||p.hunger>100)p.health-=dt*25;
+ if(p.age>68)p.health-=dt*2;
+ if(p.health<=0||p.age>95){p.alive=false;log(world,p.name+' умер.');continue}
+ if(hour>=21||hour<5||p.energy<12){p.action='спит';p.energy=Math.min(100,p.energy+dt*60);p.tx=p.x;p.tz=p.z;continue}
+ if(p.thirst>40){assign(p,'ищет воду',{x:-4,z:p.z})}
+ else if(p.hunger>32){
+  const bush=closest(berryBushes,p,b=>b.food>=1);
+  const animal=closest(fauna,p,a=>a.alive);
+  if(bush&&(!animal||dist(p,bush)<dist(p,animal)*1.7||p.skills.охота<2))assign(p,'собирает ягоды',bush);
+  else if(animal)assign(p,'охотится',animal);
+  else assign(p,'ловит рыбу',{x:-4,z:p.z});
+ }else{
+  const neighbor=closest(world.people,p,q=>q.alive&&q.id!==p.id);
+  if(neighbor&&dist(p,neighbor)<12&&p.energy<65){assign(p,'общается',neighbor)}
+  else if(dist(p,{x:p.tx,z:p.tz})<2||p.action==='спит'){p.action='исследует';p.tx=rnd(-43,43);p.tz=rnd(-43,43)}
+ }
+ const d=dist(p,{x:p.tx,z:p.tz});
+ if(d>.9){const step=Math.min(d,dt*25);p.x+=(p.tx-p.x)/d*step;p.z+=(p.tz-p.z)/d*step}
+ else if(p.action==='ищет воду'){p.action='пьёт';p.thirst=Math.max(0,p.thirst-dt*140);p.skills.вода=(p.skills.вода||0)+dt*2}
+ else if(p.action==='собирает ягоды'){const bush=closest(berryBushes,p,b=>b.food>=1);
+ if(bush&&dist(p,bush)<3){bush.food=Math.max(0,bush.food-dt*4);p.hunger=Math.max(0,p.hunger-dt*75);p.skills.сбор=(p.skills.сбор||0)+dt*3}}
+ else if(p.action==='охотится'){const a=closest(fauna,p,q=>q.alive);
+ p.skills.охота=(p.skills.охота||0)+dt*.6;
+ if(a&&dist(p,a)<3&&Math.random()<dt*(.2+(p.skills.охота||0)*.025)){a.alive=false;p.hunger=Math.max(0,p.hunger-75);p.energy=Math.max(0,p.energy-12);log(world,p.name+' добыл '+a.species+' после охоты.')}}
+ else if(p.action==='ловит рыбу'){p.skills.рыбалка=(p.skills.рыбалка||0)+dt; if(Math.random()<dt*.6){p.hunger=Math.max(0,p.hunger-55);log(world,p.name+' поймал рыбу.')}}
+ else if(p.action==='общается'){const q=closest(world.people,p,a=>a.alive&&a.id!==p.id);if(q&&dist(p,q)<3){p.energy=Math.min(100,p.energy+dt*12);p.skills.наблюдение=(p.skills.наблюдение||0)+dt*1.4;
+ if(q.skills.сбор>p.skills.сбор+1)p.skills.сбор+=dt*.3}}
+ if(p.skills.сбор>7&&!world.discoveries.includes('Пути сбора')){world.discoveries.push('Пути сбора');log(world,p.name+' освоил устойчивые маршруты поиска пищи.')}
+ p.memory=p.memory.slice(-14)
+ }
+ if(Math.floor(world.day)%30===0&&Math.random()<dt*.2&&world.people.filter(p=>p.alive).length<65){
+ const a=world.people.find(p=>p.alive&&p.sex==='ж'&&p.age>=18&&p.age<40),b=world.people.find(p=>p.alive&&p.sex==='м'&&p.age>=18&&p.age<50);
+ if(a&&b&&dist(a,b)<24){const baby=born(world,0,a.x,a.z);baby.kin=[a.id,b.id];world.people.push(baby);log(world,baby.name+' родился у '+a.name+' и '+b.name+'.')}}
+}
+function renderUI(){$('#day').textContent=Math.floor(world.day);$('#clock').textContent=String(Math.floor((world.day%1)*24)).padStart(2,'0')+':'+String(Math.floor((world.day%1*24%1)*60)).padStart(2,'0');$('#count').textContent=world.people.filter(p=>p.alive).length;$('#gen').textContent=Math.max(1,...world.people.map(p=>p.kin.length?2:1));const p=world.people.find(p=>p.id===selected);$('#subject').textContent=p?p.name:'Долина истоков';$('#details').innerHTML=p?'<div class="stat">Возраст <b>'+p.age.toFixed(1)+'</b></div><div class="stat">Здоровье <b>'+Math.max(0,p.health).toFixed(0)+'</b></div><div class="stat">Жажда <b>'+p.thirst.toFixed(0)+'</b></div><div class="stat">Голод <b>'+p.hunger.toFixed(0)+'</b></div><h3>Навыки</h3>'+Object.entries(p.skills).map(([k,v])=>'<div class="stat">'+k+' <b>'+v.toFixed(1)+'</b></div>').join('')+'<h3>Субъективная память</h3>'+p.memory.map(x=>'<div class="entry">'+x+'</div>').join(''):'Мир существует без ваших команд. Нажмите на жителя, чтобы увидеть его развитие. Открытия возникают из приобретённых навыков.';$('#chronicle').innerHTML=(truthMode?world.truth.slice(-12).reverse():world.chronicle.slice(0,12)).map(e=>'<div class="entry"><span class="tag">ДЕНЬ '+e.day+'</span><br>'+e.message+'</div>').join('');$('#history').textContent=truthMode?'Показать память мира':'Показать объективную историю'}
 function save(){try{localStorage.setItem('genesis-world-v1',JSON.stringify(world));$('#save').textContent='✓ Сохранено в браузере'}catch{$('#save').textContent='Сохранение недоступно'}}
-function animate(now){requestAnimationFrame(animate);const delta=Math.min(.08,(now-last)/1000);last=now;controls.update();if(!paused){tAccum+=delta*speed*.5;let iter=0;while(tAccum>=.25&&iter++<25){tick(.25);tAccum-=.25}}uiAccum+=delta;if(uiAccum>.5){updatePeople();renderUI();uiAccum=0}renderer.render(scene,camera)}
+function animate(now){requestAnimationFrame(animate);const delta=Math.min(.08,(now-last)/1000);last=now;controls.update();illuminate();animateEcology(delta);if(!paused){tAccum+=delta*speed*.5;let iter=0;while(tAccum>=.25&&iter++<25){tick(.25);tAccum-=.25}}uiAccum+=delta;if(uiAccum>.5){updatePeople();renderUI();uiAccum=0}renderer.render(scene,camera)}
 $('#openPanel').onclick=()=>$('#observerPanel').classList.toggle('open');$('#closePanel').onclick=()=>$('#observerPanel').classList.remove('open');$('#play').onclick=()=>{paused=!paused;$('#play').textContent=paused?'▶ Продолжить':'⏸ Пауза'};document.querySelectorAll('[data-speed]').forEach(b=>b.onclick=()=>{speed=Number(b.dataset.speed);document.querySelectorAll('[data-speed]').forEach(x=>x.classList.toggle('active',x===b))});$('#history').onclick=()=>{truthMode=!truthMode;renderUI()};$('#rewrite').onclick=()=>{world.revision++;for(const p of world.people)if(p.alive)p.memory=['Эта долина всегда была такой, сколько я себя помню.'];world.truth.push({day:Math.floor(world.day),message:'ОБЪЕКТИВНО: наблюдатель переписал субъективную память жителей. Ревизия '+world.revision});world.chronicle.unshift({day:Math.floor(world.day),message:'Долина кажется жителям неизменной.'});renderUI();save()};$('#reset').onclick=()=>{if(confirm('Создать новый мир? Текущее локальное сохранение будет заменено.')){world=newWorld();selected=null;updatePeople();renderUI();save()}};addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});setInterval(()=>{save();cloudSave()},12000);addEventListener('pagehide',save);updatePeople();renderUI();cloudRead();requestAnimationFrame(animate);
 </script></body></html>
