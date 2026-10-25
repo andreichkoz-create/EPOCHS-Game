@@ -33,9 +33,23 @@ function height(x,z){return Math.sin(x*.065)*1.5+Math.cos(z*.075)*2+Math.sin((x+
 const geo=new THREE.PlaneGeometry(170,170,110,110);geo.rotateX(-Math.PI/2);const pos=geo.attributes.position;for(let i=0;i<pos.count;i++){const x=pos.getX(i),z=pos.getZ(i);pos.setY(i,height(x,z))}geo.computeVertexNormals();const ground=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:'#59754b',roughness:1,flatShading:false}));ground.receiveShadow=true;scene.add(ground);
 const river=new THREE.Mesh(new THREE.PlaneGeometry(9,175),new THREE.MeshPhysicalMaterial({color:'#548b94',metalness:.1,roughness:.18,transparent:true,opacity:.88,side:THREE.DoubleSide}));river.rotation.x=-Math.PI/2;river.position.set(-4,0.7,0);scene.add(river);
 const trunkG=new THREE.CylinderGeometry(.24,.42,3.6,7),crownG=new THREE.ConeGeometry(2.2,6,7);const trunks=new THREE.InstancedMesh(trunkG,new THREE.MeshStandardMaterial({color:'#56472f'}),420),crowns=new THREE.InstancedMesh(crownG,new THREE.MeshStandardMaterial({color:'#2c5b34',roughness:1}),420);const dummy=new THREE.Object3D();for(let i=0;i<420;i++){const x=rnd(-80,80),z=rnd(-80,80),scale=rnd(.7,1.6);dummy.position.set(x,height(x,z)+1.5*scale,z);dummy.scale.setScalar(scale);dummy.updateMatrix();trunks.setMatrixAt(i,dummy.matrix);dummy.position.y+=3.3*scale;dummy.updateMatrix();crowns.setMatrixAt(i,dummy.matrix)}scene.add(trunks,crowns);
-const bodyG=new THREE.CapsuleGeometry(.55,1.3,5,8);const meshes=new Map();const ray=new THREE.Raycaster(),mouse=new THREE.Vector2();let selected=null;
-function updatePeople(){for(const p of world.people){if(!p.alive){if(meshes.has(p.id)){scene.remove(meshes.get(p.id));meshes.delete(p.id)}continue}if(!meshes.has(p.id)){const mesh=new THREE.Mesh(bodyG,new THREE.MeshStandardMaterial({color:p.sex==='м'?'#ad7555':'#b7946e',roughness:1}));mesh.castShadow=true;mesh.userData.id=p.id;scene.add(mesh);meshes.set(p.id,mesh)}const mesh=meshes.get(p.id);mesh.position.set(p.x,height(p.x,p.z)+1.25,p.z);mesh.scale.setScalar(p.age<12?.62:1)}}
-renderer.domElement.addEventListener('pointerup',ev=>{if(Math.abs(ev.movementX)+Math.abs(ev.movementY)>8)return;mouse.x=(ev.clientX/innerWidth)*2-1;mouse.y=-(ev.clientY/innerHeight)*2+1;ray.setFromCamera(mouse,camera);const hits=ray.intersectObjects([...meshes.values()]);if(hits.length){selected=hits[0].object.userData.id;$('#observerPanel').classList.add('open');renderUI()}});
+const bodyG=new THREE.CapsuleGeometry(.55,1.3,5,8);
+function buildHuman(id){
+ const group=new THREE.Group();group.userData.id=id;
+ const skin=new THREE.MeshStandardMaterial({color:'#b98d70',roughness:1});
+ const clothing=new THREE.MeshStandardMaterial({color:'#675b43',roughness:1});
+ const hair=new THREE.MeshStandardMaterial({color:'#31271f',roughness:1});
+ const sphere=new THREE.SphereGeometry(1,12,10);
+ function part(mat,x,y,z,sx,sy,sz){const m=new THREE.Mesh(sphere,mat);m.position.set(x,y,z);m.scale.set(sx,sy,sz);m.castShadow=true;m.userData.id=id;group.add(m)}
+ part(clothing,0,1.15,0,.42,.55,.29);
+ part(skin,0,1.82,0,.28,.33,.27);
+ part(hair,0,2.02,-.045,.29,.15,.27);
+ for(const side of [-1,1]){part(skin,side*.5,1.16,0,.14,.43,.15);part(skin,side*.2,.45,0,.17,.46,.19)}
+ return group;
+}
+const meshes=new Map();const ray=new THREE.Raycaster(),mouse=new THREE.Vector2();let selected=null;
+function updatePeople(){for(const p of world.people){if(!p.alive){if(meshes.has(p.id)){scene.remove(meshes.get(p.id));meshes.delete(p.id)}continue}if(!meshes.has(p.id)){const mesh=buildHuman(p.id);scene.add(mesh);meshes.set(p.id,mesh)}const mesh=meshes.get(p.id);mesh.position.set(p.x,height(p.x,p.z),p.z);mesh.scale.setScalar(p.age<12?.62:1)}}
+renderer.domElement.addEventListener('pointerup',ev=>{if(Math.abs(ev.movementX)+Math.abs(ev.movementY)>8)return;mouse.x=(ev.clientX/innerWidth)*2-1;mouse.y=-(ev.clientY/innerHeight)*2+1;ray.setFromCamera(mouse,camera);const hits=ray.intersectObjects([...meshes.values()],true);if(hits.length){selected=hits[0].object.userData.id;$('#observerPanel').classList.add('open');renderUI()}});
 let paused=false,speed=1,truthMode=false,tAccum=0,uiAccum=0,last=performance.now();
 function tick(dt){world.day+=dt;for(const p of world.people){if(!p.alive)continue;p.age=(world.day-p.birth)/365;p.hunger+=dt*1.4;p.thirst+=dt*2.1;p.energy=Math.max(0,p.energy-dt*.55);if(p.thirst>75||p.hunger>80)p.health-=dt*1.7;if(p.age>68)p.health-=dt*.2;if(p.health<=0||p.age>95){p.alive=false;log(world,p.name+' умер.');continue}
 if(p.thirst>35){p.tx=-4+rnd(-2,2);p.tz=rnd(-45,45)}else if(p.hunger>38){p.tx=rnd(-40,40);p.tz=rnd(-40,40)}else if(dist(p,{x:p.tx,z:p.tz})<2){p.tx=rnd(-42,42);p.tz=rnd(-42,42)}
