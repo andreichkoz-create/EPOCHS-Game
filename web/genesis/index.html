@@ -133,7 +133,13 @@ function buildHuman(id){
   joints.add(anchor);return {upper:anchor,lower};
  }
  const arms=[limb(-1,true),limb(1,true)],legs=[limb(-1,false),limb(1,false)];
- for(let i=3;i<=6;i++)group.children[i].visible=false;group.add(joints);group.userData.rig={arms,legs};
+ for(let i=3;i<=6;i++)group.children[i].visible=false;
+ const carried=new THREE.Group();carried.name='held-object';arms[1].lower.add(carried);carried.position.set(0,-.46,.08);
+ const wood=new THREE.Mesh(new THREE.CylinderGeometry(.055,.07,.95,7),new THREE.MeshStandardMaterial({color:'#836241',roughness:1}));
+ wood.rotation.z=Math.PI/2;wood.castShadow=true;carried.add(wood);
+ const stone=new THREE.Mesh(new THREE.DodecahedronGeometry(.15,0),new THREE.MeshStandardMaterial({color:'#92918a',roughness:1}));stone.position.x=.48;stone.castShadow=true;carried.add(stone);
+ const bundle=new THREE.Mesh(new THREE.SphereGeometry(.23,7,5),new THREE.MeshStandardMaterial({color:'#9e9161',roughness:1}));bundle.position.set(.15,.1,0);carried.add(bundle);
+ group.add(joints);group.userData.rig={arms,legs,carried,wood,stone,bundle};
  return group;
 }
 
@@ -274,13 +280,20 @@ function animateHumanActions(now){
  const phase=t*6+p.id*1.71,cycle=Math.sin(phase);
  const activity=p.action||'';
  const rig=g.userData.rig;if(rig){
+  const carrying=/несёт|собирает материалы|ищет материалы/.test(activity);
+  const woodworking=/древесину/.test(activity);
+  const stonework=/камень/.test(activity);
+  rig.carried.visible=carrying||woodworking||stonework;
+  rig.wood.visible=carrying||woodworking;rig.stone.visible=stonework;rig.bundle.visible=carrying;
+
   const work=/ягоды|камень|растение|рыбу|пьёт|стро|соедин|материалы|древесину/.test(activity);
   for(let k=0;k<2;k++){
    const sign=k?1:-1;
-   rig.arms[k].upper.rotation.x=moving?cycle*sign*.58:work?-.65+Math.sin(t*4+p.id+k)*.26:Math.sin(t*1.1+k+p.id)*.035;
-   rig.arms[k].lower.rotation.x=work?-.48: moving?-.16:0;
-   rig.legs[k].upper.rotation.x=moving?-cycle*sign*.65:0;
-   rig.legs[k].lower.rotation.x=moving?Math.max(0,cycle*sign)*.7:0;
+   const lerp=(v,target)=>v+(target-v)*.13;
+   rig.arms[k].upper.rotation.x=lerp(rig.arms[k].upper.rotation.x,moving?cycle*sign*.58:work?-.65+Math.sin(t*4+p.id+k)*.26:Math.sin(t*1.1+k+p.id)*.035);
+   rig.arms[k].lower.rotation.x=lerp(rig.arms[k].lower.rotation.x,work?-.48:moving?-.16:0);
+   rig.legs[k].upper.rotation.x=lerp(rig.legs[k].upper.rotation.x,moving?-cycle*sign*.65:0);
+   rig.legs[k].lower.rotation.x=lerp(rig.legs[k].lower.rotation.x,moving?Math.max(0,cycle*sign)*.7:0);
   }
  }
  for(let i=3;i<7;i++){parts[i].rotation.x=0;parts[i].rotation.z=0}parts[0].rotation.x=0;
