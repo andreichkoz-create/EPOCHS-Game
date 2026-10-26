@@ -406,8 +406,76 @@ function shelteredByConstruction(p){
  return neighbors.some(o=>o.kind==='cover')||neighbors.length>=4;
 }
 
+
+// Ecosystem v1: biological time lives in the saved world, not in frame rendering.
+// Seedlings replace dead trees gradually; wildlife birth/death uses forage.
+function ecosystemState(){
+ if(!world.ecosystem)world.ecosystem={lastDay:world.day,seedlings:[],grass:100,animals:null,treeBirths:0,treeDeaths:0,animalBirths:0,animalDeaths:0};
+ const e=world.ecosystem;
+ if(!Array.isArray(e.animals)){
+ e.animals=fauna.map(a=>({id:a.id,x:a.x,z:a.z,tx:a.tx,tz:a.tz,alive:a.alive,energy:85,age:30,species:a.species}));
+ }
+ return e;
+}
+function spawnFaunaMesh(a){
+ const g=new THREE.Group(),mat=new THREE.MeshStandardMaterial({color:a.species==='олень'?'#9a7051':'#51483d'});
+ const torso=new THREE.Mesh(deerBody,mat);torso.scale.set(a.species==='олень'?1.1:.85,.55,.46);torso.position.y=1.1;g.add(torso);
+ const head=new THREE.Mesh(deerBody,mat);head.scale.set(.35,.38,.35);head.position.set(.85,1.35,0);g.add(head);
+ for(const x of [-.62,.6])for(const z of [-.28,.28]){const leg=new THREE.Mesh(new THREE.CylinderGeometry(.10,.13,.85,5),mat);leg.position.set(x,.46,z);g.add(leg)}
+ scene.add(g);return g;
+}
+function syncAnimals(){
+ const e=ecosystemState();
+ for(let i=0;i<e.animals.length;i++){
+ const a=e.animals[i];
+ if(!fauna[i]){fauna[i]=a;faunaMeshes[i]=spawnFaunaMesh(a)}
+ else Object.assign(fauna[i],a);
+ }
+ for(let i=e.animals.length;i<fauna.length;i++){fauna[i].alive=false;faunaMeshes[i].visible=false}
+}
+function updateEcosystem(dt){
+ const e=ecosystemState(),season=seasonName(),cold=season==='Зима',growth=cold?.1:season==='Весна'?1.4:season==='Лето'?1.1:.5;
+ e.grass=Math.max(0,Math.min(100,e.grass+dt*growth*2));
+ const fallen=forestState().fallen;
+ // Each mature tree has a small probability of producing a nearby viable seed.
+ if(e.seedlings.length<170&&Math.random()<dt*.12*growth){
+  const live=forest.filter(t=>!fallen.some(f=>f.id===t.id));
+  if(live.length){const parent=live[Math.floor(Math.random()*live.length)],x=Math.max(-78,Math.min(78,parent.x+rnd(-14,14))),z=Math.max(-78,Math.min(78,parent.z+rnd(-14,14)));
+   if(Math.abs(x+4)>5&&forest.every(t=>dist(t,{x,z})>2.4)&&e.seedlings.every(t=>dist(t,{x,z})>2.4))e.seedlings.push({id:10000+Math.floor(Math.random()*1e8),x,z,age:0,scale:.08})}
+ }
+ for(const t of e.seedlings){t.age+=dt;t.scale=Math.min(1.15,.08+t.age/210)}
+ // A harvested forest slot becomes available for a seedling after natural regrowth.
+ if(fallen.length&&e.seedlings.length&&Math.random()<dt*.012*growth){
+  const ready=e.seedlings.find(t=>t.age>100);
+  if(ready){const cut=fallen.shift(),old=forest[cut.id];if(old){old.x=ready.x;old.z=ready.z;old.scale=.3;old.regrown=true;e.treeBirths++;const cached=fallenTrees.get(cut.id);if(cached){scene.remove(cached.group);fallenTrees.delete(cut.id)}e.seedlings.splice(e.seedlings.indexOf(ready),1);refreshForest()}}
+ }
+ for(const a of e.animals){
+  if(!a.alive)continue;
+  a.age+=dt;a.energy=Math.min(100,a.energy+dt*(e.grass>10?3.5:-7)-dt*(cold?2:1));
+  e.grass=Math.max(0,e.grass-dt*.012);
+  if(a.energy<=0||a.age>1800){a.alive=false;e.animalDeaths++;continue}
+  if(dist(a,{x:a.tx,z:a.tz})<2){a.tx=Math.max(-68,Math.min(68,a.x+rnd(-20,20)));a.tz=Math.max(-68,Math.min(68,a.z+rnd(-20,20)))}
+ }
+ if(e.animals.filter(a=>a.alive).length<65&&e.grass>18&&Math.random()<dt*(cold?.005:.045)){
+ const adults=e.animals.filter(a=>a.alive&&a.energy>40&&a.age>90);
+ if(adults.length>=2){const parent=adults[Math.floor(Math.random()*adults.length)],baby={id:Math.max(16,...e.animals.map(x=>x.id))+1,x:parent.x+rnd(-2,2),z:parent.z+rnd(-2,2),tx:parent.x+rnd(-5,5),tz:parent.z+rnd(-5,5),species:parent.species,alive:true,energy:65,age:0};
+ e.animals.push(baby);e.animalBirths++}
+ }
+ e.lastDay=world.day;
+}
+const saplingMeshes=new Map(),saplingGeo=new THREE.ConeGeometry(1,3,6),saplingMat=new THREE.MeshStandardMaterial({color:'#59854b'});
+function drawSaplings(){
+ const e=ecosystemState(),ids=new Set();
+ for(const t of e.seedlings){ids.add(t.id);let mesh=saplingMeshes.get(t.id);
+ if(!mesh){mesh=new THREE.Mesh(saplingGeo,saplingMat);mesh.castShadow=true;scene.add(mesh);saplingMeshes.set(t.id,mesh)}
+ mesh.scale.setScalar(t.scale);mesh.position.set(t.x,height(t.x,t.z)+1.5*t.scale,t.z)}
+ for(const [id,m] of saplingMeshes)if(!ids.has(id)){scene.remove(m);saplingMeshes.delete(id)}
+ grass.scale.set(1,Math.max(.3,e.grass/100),1);
+}
+
 function tick(dt){
  world.day+=dt;
+ updateEcosystem(dt);
  const hour=(world.day%1)*24;const season=seasonName();const winter=season==='Зима';
  for(const bush of berryBushes)bush.food=Math.min(bush.capacity,bush.food+dt*(winter?.18:season==='Лето'?2.4:1.3));
  for(const p of world.people){if(!p.alive)continue;
@@ -437,7 +505,7 @@ function tick(dt){
  if(bush&&dist(p,bush)<3){const portion=Math.min(bush.food,dt*5);bush.food-=portion;p.hunger=Math.max(0,p.hunger-portion*25);if(p.hunger<30&&season!=='Зима')p.foodStore=Math.min(24,p.foodStore+portion*.28);knowledge(p,'съедобные растения',dt*1.5);p.skills.сбор=(p.skills.сбор||0)+dt*3}}
  else if(p.action==='экспериментирует с охотой'){const a=closest(fauna,p,q=>q.alive);
  p.skills.охота=(p.skills.охота||0)+dt*.3;knowledge(p,'приёмы охоты',dt*.7);
- if(a&&dist(p,a)<3&&Math.random()<dt*(.025+(p.knowledge['приёмы охоты']||0)*.004)){a.alive=false;p.hunger=Math.max(0,p.hunger-75);p.energy=Math.max(0,p.energy-12);log(world,p.name+' добыл '+a.species+' после охоты.')}}
+ if(a&&dist(p,a)<3&&Math.random()<dt*(.025+(p.knowledge['приёмы охоты']||0)*.004)){a.alive=false;const ee=ecosystemState();const aa=ee.animals.find(q=>q.id===a.id);if(aa)aa.alive=false;ee.animalDeaths++;p.hunger=Math.max(0,p.hunger-75);p.energy=Math.max(0,p.energy-12);log(world,p.name+' добыл '+a.species+' после охоты.')}}
  else if(p.action==='пробует добыть рыбу'){p.skills.рыбалка=(p.skills.рыбалка||0)+dt; if(Math.random()<dt*(.32+(p.skills.рыбалка||0)*.005)){p.hunger=Math.max(0,p.hunger-55);knowledge(p,'поведение рыбы',dt*2);log(world,p.name+' поймал рыбу.')}}
  else if(p.action==='общается'){const q=closest(world.people,p,a=>a.alive&&a.id!==p.id);if(q&&dist(p,q)<3){p.energy=Math.min(100,p.energy+dt*12);p.skills.наблюдение=(p.skills.наблюдение||0)+dt*1.4;
  if(q.skills.сбор>p.skills.сбор+1)p.skills.сбор+=dt*.3;initMind(q);if(Math.random()<dt*.25){const key=Object.keys(q.mind.beliefs).find(k=>q.mind.beliefs[k].successes>0);if(key){hypothesis(p,key,.2,true);remember(p,'обучение','Наблюдал за '+q.name+': '+key)}}}}
@@ -450,7 +518,7 @@ function tick(dt){
 }
 function renderUI(){$('#day').textContent=Math.floor(world.day);$('#season').textContent=seasonName();$('#clock').textContent=String(Math.floor((world.day%1)*24)).padStart(2,'0')+':'+String(Math.floor((world.day%1*24%1)*60)).padStart(2,'0');$('#count').textContent=world.people.filter(p=>p.alive).length;$('#gen').textContent=Math.max(1,...world.people.map(p=>p.kin.length?2:1));const p=world.people.find(p=>p.id===selected);$('#subject').textContent=p?p.name:'Долина истоков';$('#details').innerHTML=p?'<div class="stat">Возраст <b>'+p.age.toFixed(1)+'</b></div><div class="stat">Здоровье <b>'+Math.max(0,p.health).toFixed(0)+'</b></div><div class="stat">Жажда <b>'+p.thirst.toFixed(0)+'</b></div><div class="stat">Голод <b>'+p.hunger.toFixed(0)+'</b></div><h3>Навыки</h3>'+Object.entries(p.skills).map(([k,v])=>'<div class="stat">'+k+' <b>'+v.toFixed(1)+'</b></div>').join('')+'<h3>Личность и намерения</h3><div class="stat">Цель <b>'+((p.mind||{}).intent||'выжить')+'</b></div><div class="stat">Экспериментов <b>'+((p.mind||{}).experiments||0)+'</b></div><div class="stat">Успешных <b>'+((p.mind||{}).successful||0)+'</b></div><h3>Гипотезы</h3>'+Object.entries((p.mind||{}).beliefs||{}).map(([k,v])=>'<div class="stat">'+k+' <b>'+Math.round(v.confidence*100)+'%</b></div>').join('')+'<h3>Предметы из экспериментов</h3><div class="stat">Создано <b>'+((p.artifacts||[]).length)+'</b></div>'+'<h3>Личный опыт</h3>'+((p.mind||{}).episodes||[]).slice(-6).reverse().map(e=>'<div class="entry">'+e.message+'</div>').join('')+'<h3>Исследованные явления</h3>'+Object.entries(p.knowledge||{}).filter(([k,v])=>v>1).map(([k,v])=>'<div class="stat">'+k+' <b>'+Math.round(v)+'%</b></div>').join('')+'<h3>Субъективная память</h3>'+p.memory.map(x=>'<div class="entry">'+x+'</div>').join(''):'Мир существует без ваших команд. Нажмите на жителя, чтобы увидеть его развитие. Открытия возникают из приобретённых навыков.';$('#chronicle').innerHTML=(truthMode?world.truth.slice(-12).reverse():world.chronicle.slice(0,12)).map(e=>'<div class="entry"><span class="tag">ДЕНЬ '+e.day+'</span><br>'+e.message+'</div>').join('');$('#history').textContent=truthMode?'Показать память мира':'Показать объективную историю'}
 function save(){if(testingPopulation)return;try{localStorage.setItem('genesis-world-v1',JSON.stringify(world));$('#save').textContent='✓ Сохранено в браузере'}catch{$('#save').textContent='Сохранение недоступно'}}
-function animate(now){requestAnimationFrame(animate);const delta=Math.min(.08,(now-last)/1000);last=now;controls.update();refreshForestOnce();animateFallenTrees(delta);ensureMaterialResources();ensureStructures();illuminate();applySeasonAppearance();animateSeasonParticles(delta,now);animateEcology(delta);animateHumanActions(now);if(!paused){tAccum+=delta*speed*.5;let iter=0;while(tAccum>=.25&&iter++<25){tick(.25);tAccum-=.25}}uiAccum+=delta;if(uiAccum>.5){updatePeople();renderUI();renderWorldMap();uiAccum=0}river.material.roughness=.14+.06*Math.sin(now*.001);renderer.render(scene,camera)}
+function animate(now){requestAnimationFrame(animate);const delta=Math.min(.08,(now-last)/1000);last=now;controls.update();refreshForestOnce();syncAnimals();drawSaplings();animateFallenTrees(delta);ensureMaterialResources();ensureStructures();illuminate();applySeasonAppearance();animateSeasonParticles(delta,now);animateEcology(delta);animateHumanActions(now);if(!paused){tAccum+=delta*speed*.5;let iter=0;while(tAccum>=.25&&iter++<25){tick(.25);tAccum-=.25}}uiAccum+=delta;if(uiAccum>.5){updatePeople();renderUI();renderWorldMap();uiAccum=0}river.material.roughness=.14+.06*Math.sin(now*.001);renderer.render(scene,camera)}
 async function runPopulationTest(){
  const button=$('#stressTestPanel'),result=$('#testResults');if(testingPopulation)return;testingPopulation=true;button.disabled=true;result.textContent='Тест запущен…';
  const live=world,storedBush=berryBushes.map(b=>b.food),storedAnimals=fauna.map(a=>({...a}));
@@ -487,7 +555,7 @@ function renderWorldMap(){
 $('#mapToggle').onclick=()=>{$('#worldMap').classList.toggle('open');renderWorldMap()};
 $('#observerLight').onclick=()=>{observerLight=!observerLight;localStorage.setItem('genesis-observer-light',observerLight?'on':'off');$('#observerLight').textContent=observerLight?'☀ Свет: вкл':'☾ Свет: выкл';$('#observerLight').setAttribute('aria-pressed',String(observerLight));illuminate()};$('#observerLight').textContent=observerLight?'☀ Свет: вкл':'☾ Свет: выкл';$('#observerLight').setAttribute('aria-pressed',String(observerLight));$('#openPanel').onclick=()=>$('#observerPanel').classList.toggle('open');$('#closePanel').onclick=()=>$('#observerPanel').classList.remove('open');$('#play').onclick=()=>{paused=!paused;$('#play').textContent=paused?'▶ Продолжить':'⏸ Пауза'};document.querySelectorAll('[data-speed]').forEach(b=>b.onclick=()=>{speed=Number(b.dataset.speed);document.querySelectorAll('[data-speed]').forEach(x=>x.classList.toggle('active',x===b))});$('#history').onclick=()=>{truthMode=!truthMode;renderUI()};$('#rewrite').onclick=()=>{world.revision++;for(const p of world.people)if(p.alive)p.memory=['Эта долина всегда была такой, сколько я себя помню.'];world.truth.push({day:Math.floor(world.day),message:'ОБЪЕКТИВНО: наблюдатель переписал субъективную память жителей. Ревизия '+world.revision});world.chronicle.unshift({day:Math.floor(world.day),message:'Долина кажется жителям неизменной.'});renderUI();save()};$('#reset').onclick=()=>{if(!confirm('Обнулить мир и начать сначала? Все жители, открытия и локальная история текущего мира будут удалены.'))return;
  for(const mesh of meshes.values())scene.remove(mesh);meshes.clear();
- world=newWorld();selected=null;tAccum=0;paused=false;speed=1;for(const e of fallenTrees.values())scene.remove(e.group);fallenTrees.clear();forestInitialized=false;
+ world=newWorld();for(const [id,m] of saplingMeshes){scene.remove(m)}saplingMeshes.clear();for(let i=17;i<faunaMeshes.length;i++)scene.remove(faunaMeshes[i]);fauna.length=17;faunaMeshes.length=17;forest.forEach((t,i)=>{t.x=treeRandom(i*3+1)*160-80;t.z=treeRandom(i*3+2)*160-80;t.scale=.7+treeRandom(i*3+3)*.9});selected=null;tAccum=0;paused=false;speed=1;for(const e of fallenTrees.values())scene.remove(e.group);fallenTrees.clear();forestInitialized=false;refreshForest();
  $('#play').textContent='⏸ Пауза';
  document.querySelectorAll('[data-speed]').forEach(b=>b.classList.toggle('active',b.dataset.speed==='1'));
  // A new cloud identity prevents restoring the previous snapshot after a reset.
