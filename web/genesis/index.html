@@ -273,19 +273,20 @@ function tick(dt){
  const hour=(world.day%1)*24;const season=seasonName();const winter=season==='Зима';
  for(const bush of berryBushes)bush.food=Math.min(bush.capacity,bush.food+dt*(winter?.18:season==='Лето'?2.4:1.3));
  for(const p of world.people){if(!p.alive)continue;
- initMind(p);p.age=(world.day-p.birth)/365;p.knowledge=p.knowledge||{};p.action=p.action||'исследует';p.skills=p.skills||{};p.cold=p.cold||0;const shelter=chooseShelter(p);for(const a of fauna)if(a.alive)observed(p,a,'поведение животных',dt*.35);for(const b of berryBushes)if(b.food>1)observed(p,b,'съедобные растения',dt*.4);for(const rock of stones)observed(p,rock,'свойства камня',dt*.12);for(const c of caves)observed(p,c,'укрытия',dt*.45);p.hunger=Math.min(110,p.hunger+dt*5);think(p,dt);materialExploration(p,dt);p.thirst=Math.min(110,p.thirst+dt*7);
+ initMind(p);p.age=(world.day-p.birth)/365;p.knowledge=p.knowledge||{};p.action=p.action||'исследует';p.skills=p.skills||{};p.cold=p.cold||0;p.foodStore=p.foodStore||0;const shelter=chooseShelter(p);for(const a of fauna)if(a.alive)observed(p,a,'поведение животных',dt*.35);for(const b of berryBushes)if(b.food>1)observed(p,b,'съедобные растения',dt*.4);for(const rock of stones)observed(p,rock,'свойства камня',dt*.12);for(const c of caves)observed(p,c,'укрытия',dt*.85);p.hunger=Math.min(110,p.hunger+dt*5);think(p,dt);materialExploration(p,dt);p.thirst=Math.min(110,p.thirst+dt*7);
  p.energy=Math.max(0,p.energy-dt*4);
  if(p.thirst>95||p.hunger>100)p.health-=dt*9;else if(p.thirst<45&&p.hunger<55&&p.energy>35)p.health=Math.min(100,p.health+dt*2);
- if(p.age>68)p.health-=dt*2;if(winter&&dist(p,shelter)>7){p.cold+=dt*2;if(p.cold>65)p.health-=dt*5}else p.cold=Math.max(0,p.cold-dt*9);
+ if(p.age>68)p.health-=dt*2;if(winter&&dist(p,shelter)>7){p.cold+=dt*1.15;if(p.cold>78)p.health-=dt*3.5}else p.cold=Math.max(0,p.cold-dt*12);
  if(p.health<=0||p.age>95){p.alive=false;log(world,p.name+' умер.');continue}
- if(hour>=21||hour<5||p.energy<12){if((p.knowledge['укрытия']||0)>7&&dist(p,shelter)>3){p.action='ищет укрытие';p.tx=shelter.x;p.tz=shelter.z}else{p.action='спит';p.energy=Math.min(100,p.energy+dt*(dist(p,shelter)<6?70:43));p.tx=p.x;p.tz=p.z;continue}}
- if(p.action==='изучает камень'||p.action==='исследует растение'){}else if(winter&&(p.knowledge['укрытия']||0)>10&&p.cold>18){assign(p,'ищет укрытие',shelter)}else if(p.thirst>28){assign(p,'ищет воду',{x:-4,z:Math.max(-65,Math.min(65,p.z))})}
+ if(hour>=21||hour<5||p.energy<12){if((p.knowledge['укрытия']||0)>2&&dist(p,shelter)>3){p.action='ищет укрытие';p.tx=shelter.x;p.tz=shelter.z}else{p.action='спит';p.energy=Math.min(100,p.energy+dt*(dist(p,shelter)<6?70:43));p.tx=p.x;p.tz=p.z;continue}}
+ if(p.action==='изучает камень'||p.action==='исследует растение'){}else if(winter&&(p.knowledge['укрытия']||0)>2&&p.cold>42){assign(p,'ищет укрытие',shelter)}else if(p.thirst>28){assign(p,'ищет воду',{x:-4,z:Math.max(-65,Math.min(65,p.z))})}
  else if(p.hunger>24){
+  if(p.foodStore>0&&p.hunger>40){const eaten=Math.min(p.foodStore,dt*2);p.foodStore-=eaten;p.hunger=Math.max(0,p.hunger-eaten*23)}
   const bush=closest(berryBushes,p,b=>b.food>=1);
   const animal=closest(fauna,p,a=>a.alive);
   if(bush&&(!animal||dist(p,bush)<dist(p,animal)*1.7||(p.knowledge['поведение животных']||0)<35))assign(p,'собирает ягоды',bush);
   else if(animal&&(p.knowledge['поведение животных']||0)>35&&(p.knowledge['свойства камня']||0)>22)assign(p,'экспериментирует с охотой',animal);
-  else if((p.knowledge['поведение животных']||0)>12)assign(p,'пробует добыть рыбу',{x:-4,z:p.z});else {p.action='ищет пищу';p.tx=rnd(-42,42);p.tz=rnd(-42,42)}
+  else if(Math.abs(p.x+4)<40)assign(p,'пробует добыть рыбу',{x:-4,z:p.z});else {p.action='ищет пищу';p.tx=rnd(-42,42);p.tz=rnd(-42,42)}
  }else{
   const neighbor=closest(world.people,p,q=>q.alive&&q.id!==p.id);
   if(neighbor&&dist(p,neighbor)<12&&p.energy<65){assign(p,'общается',neighbor)}
@@ -295,18 +296,18 @@ function tick(dt){
  if(d>.9){const step=Math.min(d,dt*25);p.x+=(p.tx-p.x)/d*step;p.z+=(p.tz-p.z)/d*step}
  else if(p.action==='изучает камень'||p.action==='исследует растение'){experiment(p,dt)}else if(p.action==='ищет воду'){p.action='пьёт';p.thirst=Math.max(0,p.thirst-dt*140);p.skills.вода=(p.skills.вода||0)+dt*2}
  else if(p.action==='собирает ягоды'){const bush=closest(berryBushes,p,b=>b.food>=1);
- if(bush&&dist(p,bush)<3){const portion=Math.min(bush.food,dt*5);bush.food-=portion;p.hunger=Math.max(0,p.hunger-portion*25);knowledge(p,'съедобные растения',dt*1.5);p.skills.сбор=(p.skills.сбор||0)+dt*3}}
+ if(bush&&dist(p,bush)<3){const portion=Math.min(bush.food,dt*5);bush.food-=portion;p.hunger=Math.max(0,p.hunger-portion*25);if(p.hunger<30&&season!=='Зима')p.foodStore=Math.min(24,p.foodStore+portion*.28);knowledge(p,'съедобные растения',dt*1.5);p.skills.сбор=(p.skills.сбор||0)+dt*3}}
  else if(p.action==='экспериментирует с охотой'){const a=closest(fauna,p,q=>q.alive);
  p.skills.охота=(p.skills.охота||0)+dt*.3;knowledge(p,'приёмы охоты',dt*.7);
  if(a&&dist(p,a)<3&&Math.random()<dt*(.025+(p.knowledge['приёмы охоты']||0)*.004)){a.alive=false;p.hunger=Math.max(0,p.hunger-75);p.energy=Math.max(0,p.energy-12);log(world,p.name+' добыл '+a.species+' после охоты.')}}
- else if(p.action==='пробует добыть рыбу'){p.skills.рыбалка=(p.skills.рыбалка||0)+dt; if(Math.random()<dt*.16){p.hunger=Math.max(0,p.hunger-55);log(world,p.name+' поймал рыбу.')}}
+ else if(p.action==='пробует добыть рыбу'){p.skills.рыбалка=(p.skills.рыбалка||0)+dt; if(Math.random()<dt*(.32+(p.skills.рыбалка||0)*.005)){p.hunger=Math.max(0,p.hunger-55);knowledge(p,'поведение рыбы',dt*2);log(world,p.name+' поймал рыбу.')}}
  else if(p.action==='общается'){const q=closest(world.people,p,a=>a.alive&&a.id!==p.id);if(q&&dist(p,q)<3){p.energy=Math.min(100,p.energy+dt*12);p.skills.наблюдение=(p.skills.наблюдение||0)+dt*1.4;
  if(q.skills.сбор>p.skills.сбор+1)p.skills.сбор+=dt*.3;initMind(q);if(Math.random()<dt*.25){const key=Object.keys(q.mind.beliefs).find(k=>q.mind.beliefs[k].successes>0);if(key){hypothesis(p,key,.2,true);remember(p,'обучение','Наблюдал за '+q.name+': '+key)}}}}
  if((p.knowledge['свойства камня']||0)>45&&!world.discoveries.includes('Камни различаются')){world.discoveries.push('Камни различаются');log(world,p.name+' заметил, что камни обладают разными свойствами.')}if(p.skills.сбор>7&&!world.discoveries.includes('Пути сбора')){world.discoveries.push('Пути сбора');log(world,p.name+' освоил устойчивые маршруты поиска пищи.')}
  p.memory=p.memory.slice(-14)
  }
- if(Math.random()<dt*.018&&world.people.filter(p=>p.alive).length<65){
- const a=world.people.find(p=>p.alive&&p.sex==='ж'&&p.age>=18&&p.age<40&&world.day-(p.lastBirth||-999)>260),b=world.people.find(p=>p.alive&&p.sex==='м'&&p.age>=18&&p.age<50);
+ if(Math.random()<dt*.042&&world.people.filter(p=>p.alive).length<65){
+ const a=world.people.find(p=>p.alive&&p.sex==='ж'&&p.age>=18&&p.age<40&&world.day-(p.lastBirth||-999)>210),b=world.people.find(p=>p.alive&&p.sex==='м'&&p.age>=18&&p.age<50);
  if(a&&b&&dist(a,b)<24){const baby=born(world,0,a.x,a.z);baby.kin=[a.id,b.id];a.lastBirth=world.day;world.people.push(baby);log(world,baby.name+' родился у '+a.name+' и '+b.name+'.')}}
 }
 function renderUI(){$('#day').textContent=Math.floor(world.day);$('#season').textContent=seasonName();$('#clock').textContent=String(Math.floor((world.day%1)*24)).padStart(2,'0')+':'+String(Math.floor((world.day%1*24%1)*60)).padStart(2,'0');$('#count').textContent=world.people.filter(p=>p.alive).length;$('#gen').textContent=Math.max(1,...world.people.map(p=>p.kin.length?2:1));const p=world.people.find(p=>p.id===selected);$('#subject').textContent=p?p.name:'Долина истоков';$('#details').innerHTML=p?'<div class="stat">Возраст <b>'+p.age.toFixed(1)+'</b></div><div class="stat">Здоровье <b>'+Math.max(0,p.health).toFixed(0)+'</b></div><div class="stat">Жажда <b>'+p.thirst.toFixed(0)+'</b></div><div class="stat">Голод <b>'+p.hunger.toFixed(0)+'</b></div><h3>Навыки</h3>'+Object.entries(p.skills).map(([k,v])=>'<div class="stat">'+k+' <b>'+v.toFixed(1)+'</b></div>').join('')+'<h3>Личность и намерения</h3><div class="stat">Цель <b>'+((p.mind||{}).intent||'выжить')+'</b></div><div class="stat">Экспериментов <b>'+((p.mind||{}).experiments||0)+'</b></div><div class="stat">Успешных <b>'+((p.mind||{}).successful||0)+'</b></div><h3>Гипотезы</h3>'+Object.entries((p.mind||{}).beliefs||{}).map(([k,v])=>'<div class="stat">'+k+' <b>'+Math.round(v.confidence*100)+'%</b></div>').join('')+'<h3>Предметы из экспериментов</h3><div class="stat">Создано <b>'+((p.artifacts||[]).length)+'</b></div>'+'<h3>Личный опыт</h3>'+((p.mind||{}).episodes||[]).slice(-6).reverse().map(e=>'<div class="entry">'+e.message+'</div>').join('')+'<h3>Исследованные явления</h3>'+Object.entries(p.knowledge||{}).filter(([k,v])=>v>1).map(([k,v])=>'<div class="stat">'+k+' <b>'+Math.round(v)+'%</b></div>').join('')+'<h3>Субъективная память</h3>'+p.memory.map(x=>'<div class="entry">'+x+'</div>').join(''):'Мир существует без ваших команд. Нажмите на жителя, чтобы увидеть его развитие. Открытия возникают из приобретённых навыков.';$('#chronicle').innerHTML=(truthMode?world.truth.slice(-12).reverse():world.chronicle.slice(0,12)).map(e=>'<div class="entry"><span class="tag">ДЕНЬ '+e.day+'</span><br>'+e.message+'</div>').join('');$('#history').textContent=truthMode?'Показать память мира':'Показать объективную историю'}
