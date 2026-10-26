@@ -133,7 +133,7 @@ function buildHuman(id){
   joints.add(anchor);return {upper:anchor,lower};
  }
  const arms=[limb(-1,true),limb(1,true)],legs=[limb(-1,false),limb(1,false)];
- group.add(joints);group.userData.rig={arms,legs};
+ for(let i=3;i<=6;i++)group.children[i].visible=false;group.add(joints);group.userData.rig={arms,legs};
  return group;
 }
 
