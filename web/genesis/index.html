@@ -120,6 +120,20 @@ function buildHuman(id){
  }
  part(skin,0,1.76,.275,.085,.1,.11);
  part(dark,0,1.68,.26,.095,.022,.018);
+ // Articulated overlays pivot at shoulders, hips and knees; original seven
+ // parts remain untouched for compatibility with existing animations.
+ const joints=new THREE.Group();joints.name='rig';
+ const upperMat=skin,lowerMat=clothing;
+ function limb(side,arm){
+  const anchor=new THREE.Group();anchor.position.set(side*(arm?.48:.2),arm?1.42:.91,0);
+  const upper=new THREE.Mesh(new THREE.CapsuleGeometry(arm?.105:.14,arm?.3:.38,4,7),arm?upperMat:lowerMat);upper.position.y=arm?-.26:-.33;upper.castShadow=true;anchor.add(upper);
+  const lower=new THREE.Group();lower.position.y=arm?-.5:-.63;anchor.add(lower);
+  const section=new THREE.Mesh(new THREE.CapsuleGeometry(arm?.085:.12,arm?.25:.32,4,7),arm?upperMat:lowerMat);section.position.y=arm?-.19:-.24;section.castShadow=true;lower.add(section);
+  if(!arm){const foot=new THREE.Mesh(new THREE.BoxGeometry(.23,.14,.4),lowerMat);foot.position.set(0,-.47,.13);lower.add(foot)}
+  joints.add(anchor);return {upper:anchor,lower};
+ }
+ const arms=[limb(-1,true),limb(1,true)],legs=[limb(-1,false),limb(1,false)];
+ group.add(joints);group.userData.rig={arms,legs};
  return group;
 }
 
@@ -259,6 +273,16 @@ function animateHumanActions(now){
  const moving=dist(p,{x:p.tx,z:p.tz})>1&&p.action!=='спит';
  const phase=t*6+p.id*1.71,cycle=Math.sin(phase);
  const activity=p.action||'';
+ const rig=g.userData.rig;if(rig){
+  const work=/ягоды|камень|растение|рыбу|пьёт|стро|соедин|материалы|древесину/.test(activity);
+  for(let k=0;k<2;k++){
+   const sign=k?1:-1;
+   rig.arms[k].upper.rotation.x=moving?cycle*sign*.58:work?-.65+Math.sin(t*4+p.id+k)*.26:Math.sin(t*1.1+k+p.id)*.035;
+   rig.arms[k].lower.rotation.x=work?-.48: moving?-.16:0;
+   rig.legs[k].upper.rotation.x=moving?-cycle*sign*.65:0;
+   rig.legs[k].lower.rotation.x=moving?Math.max(0,cycle*sign)*.7:0;
+  }
+ }
  for(let i=3;i<7;i++){parts[i].rotation.x=0;parts[i].rotation.z=0}parts[0].rotation.x=0;
  parts[0].rotation.z=Math.sin(t*1.5+p.id)*.012;
  parts[1].rotation.y=Math.sin(t*.75+p.id)*.12;
