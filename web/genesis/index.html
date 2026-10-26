@@ -50,7 +50,48 @@ scene.add(new THREE.HemisphereLight('#dce8ed','#314835',2));const sun=new THREE.
 function height(x,z){return Math.sin(x*.065)*1.5+Math.cos(z*.075)*2+Math.sin((x+z)*.035)*2+Math.max(0,(Math.abs(x)-43)*.15)}
 const geo=new THREE.PlaneGeometry(170,170,110,110);geo.rotateX(-Math.PI/2);const pos=geo.attributes.position;for(let i=0;i<pos.count;i++){const x=pos.getX(i),z=pos.getZ(i);pos.setY(i,height(x,z))}geo.computeVertexNormals();const ground=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:'#59754b',roughness:1,flatShading:false}));ground.receiveShadow=true;scene.add(ground);
 const river=new THREE.Mesh(new THREE.PlaneGeometry(9,175),new THREE.MeshPhysicalMaterial({color:'#548b94',metalness:.1,roughness:.18,transparent:true,opacity:.88,side:THREE.DoubleSide}));river.rotation.x=-Math.PI/2;river.position.set(-4,0.7,0);scene.add(river);
-const trunkG=new THREE.CylinderGeometry(.24,.42,3.6,7),crownG=new THREE.ConeGeometry(2.2,6,7);const trunks=new THREE.InstancedMesh(trunkG,new THREE.MeshStandardMaterial({color:'#56472f'}),420),crowns=new THREE.InstancedMesh(crownG,new THREE.MeshStandardMaterial({color:'#2c5b34',roughness:1}),420);const dummy=new THREE.Object3D();for(let i=0;i<420;i++){const x=rnd(-80,80),z=rnd(-80,80),scale=rnd(.7,1.6);dummy.position.set(x,height(x,z)+1.5*scale,z);dummy.scale.setScalar(scale);dummy.updateMatrix();trunks.setMatrixAt(i,dummy.matrix);dummy.position.y+=3.3*scale;dummy.updateMatrix();crowns.setMatrixAt(i,dummy.matrix)}scene.add(trunks,crowns);
+const trunkG=new THREE.CylinderGeometry(.24,.42,3.6,7),crownG=new THREE.ConeGeometry(2.2,6,7);
+const trunks=new THREE.InstancedMesh(trunkG,new THREE.MeshStandardMaterial({color:'#56472f'}),420),crowns=new THREE.InstancedMesh(crownG,new THREE.MeshStandardMaterial({color:'#2c5b34',roughness:1}),420);
+const forest=[];const dummy=new THREE.Object3D();
+function treeRandom(n){const v=Math.sin(n*127.1+78.233)*43758.5453;return v-Math.floor(v)}
+for(let i=0;i<420;i++){const x=treeRandom(i*3+1)*160-80,z=treeRandom(i*3+2)*160-80,scale=.7+treeRandom(i*3+3)*.9;
+ forest.push({id:i,x,z,scale});
+ dummy.position.set(x,height(x,z)+1.5*scale,z);dummy.rotation.set(0,0,0);dummy.scale.setScalar(scale);dummy.updateMatrix();trunks.setMatrixAt(i,dummy.matrix);
+ dummy.position.y+=3.3*scale;dummy.updateMatrix();crowns.setMatrixAt(i,dummy.matrix)}
+scene.add(trunks,crowns);
+let forestInitialized=false;function refreshForestOnce(){if(!forestInitialized){refreshForest();forestInitialized=true}}
+const fallenTrees=new Map(),logMaterial=new THREE.MeshStandardMaterial({color:'#755339',roughness:1});
+function forestState(){world.forest=world.forest||{fallen:[],health:{}};return world.forest}
+function refreshForest(){const state=forestState(),removed=new Set(state.fallen.map(t=>t.id));
+ for(const tree of forest){const gone=removed.has(tree.id);dummy.position.set(tree.x,height(tree.x,tree.z)+1.5*tree.scale,tree.z);
+ dummy.rotation.set(0,0,0);dummy.scale.setScalar(gone?0:tree.scale);dummy.updateMatrix();trunks.setMatrixAt(tree.id,dummy.matrix);
+ dummy.position.y+=3.3*tree.scale;dummy.updateMatrix();crowns.setMatrixAt(tree.id,dummy.matrix)}
+ trunks.instanceMatrix.needsUpdate=true;crowns.instanceMatrix.needsUpdate=true;
+ for(const item of state.fallen){if(fallenTrees.has(item.id))continue;
+ const tree=forest[item.id];if(!tree)continue;const g=new THREE.Group();
+ const log=new THREE.Mesh(new THREE.CylinderGeometry(.25,.38,3.6,7),logMaterial);log.position.y=1.8;log.castShadow=true;g.add(log);
+ const stump=new THREE.Mesh(new THREE.CylinderGeometry(.38,.42,.55,8),logMaterial);stump.position.set(0,.28,0);g.add(stump);
+ g.position.set(tree.x,height(tree.x,tree.z),tree.z);scene.add(g);
+ fallenTrees.set(item.id,{group:g,log,item});
+ }}
+function treeCuttingCapability(p){return (p.artifacts||[]).reduce((best,a)=>Math.max(best,((a.sharpness||0)*.6+(a.durability||0)*.4)*(a.components?.includes('stone')?1.2:0.55)),0)}
+function chopTree(p,dt){
+ const tool=treeCuttingCapability(p);
+ if(tool<.68||p.energy<24||p.hunger>55||p.thirst>55)return false;
+ const state=forestState(),fallen=new Set(state.fallen.map(t=>t.id));
+ const available=forest.filter(t=>!fallen.has(t.id));let target=null,best=Infinity;
+ for(const t of available){const d=dist(p,t);if(d<best){best=d;target=t}}
+ if(!target||best>35)return false;
+ if(best>2.8){p.action='идёт к дереву';p.tx=target.x;p.tz=target.z;return true}
+ p.action='обрабатывает древесину';p.tx=p.x;p.tz=p.z;
+ const hp=state.health[target.id]??100;
+ const next=hp-dt*(8+tool*25);state.health[target.id]=next;
+ if(next<=0){delete state.health[target.id];state.fallen.push({id:target.id,day:world.day,wood:6});
+ p.inventory=p.inventory||{};p.inventory.ветки=(p.inventory.ветки||0)+2;
+ knowledge(p,'обработка древесины',4);remember(p,'опыт','Дерево рухнуло после повторных ударов инструментом.');
+ log(world,p.name+' повалил дерево, используя созданное орудие.');refreshForest()}
+ return true;
+}
 const bodyG=new THREE.CapsuleGeometry(.55,1.3,5,8);
 function buildHuman(id){
  const group=new THREE.Group();group.userData.id=id;
@@ -372,7 +413,7 @@ function tick(dt){
  if(p.age>68)p.health-=dt*2;if(winter&&dist(p,shelter)>7&&!shelteredByConstruction(p)){p.cold+=dt*1.15;if(p.cold>78)p.health-=dt*3.5}else p.cold=Math.max(0,p.cold-dt*12);
  if(p.health<=0||p.age>95){p.alive=false;const cause=p.age>95?'старость':p.cold>65?'холод':p.hunger>85?'голод':p.thirst>80?'обезвоживание':'прочее';world.mortality=world.mortality||{};world.mortality[cause]=(world.mortality[cause]||0)+1;log(world,p.name+' умер: '+cause+'.');continue}
  if(hour>=21||hour<5||p.energy<12){if((p.knowledge['укрытия']||0)>2&&dist(p,shelter)>3){p.action='ищет укрытие';p.tx=shelter.x;p.tz=shelter.z}else{p.action='спит';p.energy=Math.min(100,p.energy+dt*(dist(p,shelter)<6?70:43));p.tx=p.x;p.tz=p.z;continue}}
- if(p.action==='изучает камень'||p.action==='исследует растение'){}else if(construct(p,dt)){}else if(winter&&(p.knowledge['укрытия']||0)>2&&p.cold>42){assign(p,'ищет укрытие',shelter)}else if(p.thirst>28){assign(p,'ищет воду',{x:-4,z:Math.max(-65,Math.min(65,p.z))})}
+ if(p.action==='изучает камень'||p.action==='исследует растение'){}else if(p.buildIntent&&construct(p,dt)){}else if(chopTree(p,dt)){}else if(construct(p,dt)){}else if(winter&&(p.knowledge['укрытия']||0)>2&&p.cold>42){assign(p,'ищет укрытие',shelter)}else if(p.thirst>28){assign(p,'ищет воду',{x:-4,z:Math.max(-65,Math.min(65,p.z))})}
  else if(p.hunger>24){
   if(p.foodStore>0&&p.hunger>40){const eaten=Math.min(p.foodStore,dt*2);p.foodStore-=eaten;p.hunger=Math.max(0,p.hunger-eaten*23)}
   const bush=closest(berryBushes,p,b=>b.food>=1);
@@ -405,7 +446,7 @@ function tick(dt){
 }
 function renderUI(){$('#day').textContent=Math.floor(world.day);$('#season').textContent=seasonName();$('#clock').textContent=String(Math.floor((world.day%1)*24)).padStart(2,'0')+':'+String(Math.floor((world.day%1*24%1)*60)).padStart(2,'0');$('#count').textContent=world.people.filter(p=>p.alive).length;$('#gen').textContent=Math.max(1,...world.people.map(p=>p.kin.length?2:1));const p=world.people.find(p=>p.id===selected);$('#subject').textContent=p?p.name:'Долина истоков';$('#details').innerHTML=p?'<div class="stat">Возраст <b>'+p.age.toFixed(1)+'</b></div><div class="stat">Здоровье <b>'+Math.max(0,p.health).toFixed(0)+'</b></div><div class="stat">Жажда <b>'+p.thirst.toFixed(0)+'</b></div><div class="stat">Голод <b>'+p.hunger.toFixed(0)+'</b></div><h3>Навыки</h3>'+Object.entries(p.skills).map(([k,v])=>'<div class="stat">'+k+' <b>'+v.toFixed(1)+'</b></div>').join('')+'<h3>Личность и намерения</h3><div class="stat">Цель <b>'+((p.mind||{}).intent||'выжить')+'</b></div><div class="stat">Экспериментов <b>'+((p.mind||{}).experiments||0)+'</b></div><div class="stat">Успешных <b>'+((p.mind||{}).successful||0)+'</b></div><h3>Гипотезы</h3>'+Object.entries((p.mind||{}).beliefs||{}).map(([k,v])=>'<div class="stat">'+k+' <b>'+Math.round(v.confidence*100)+'%</b></div>').join('')+'<h3>Предметы из экспериментов</h3><div class="stat">Создано <b>'+((p.artifacts||[]).length)+'</b></div>'+'<h3>Личный опыт</h3>'+((p.mind||{}).episodes||[]).slice(-6).reverse().map(e=>'<div class="entry">'+e.message+'</div>').join('')+'<h3>Исследованные явления</h3>'+Object.entries(p.knowledge||{}).filter(([k,v])=>v>1).map(([k,v])=>'<div class="stat">'+k+' <b>'+Math.round(v)+'%</b></div>').join('')+'<h3>Субъективная память</h3>'+p.memory.map(x=>'<div class="entry">'+x+'</div>').join(''):'Мир существует без ваших команд. Нажмите на жителя, чтобы увидеть его развитие. Открытия возникают из приобретённых навыков.';$('#chronicle').innerHTML=(truthMode?world.truth.slice(-12).reverse():world.chronicle.slice(0,12)).map(e=>'<div class="entry"><span class="tag">ДЕНЬ '+e.day+'</span><br>'+e.message+'</div>').join('');$('#history').textContent=truthMode?'Показать память мира':'Показать объективную историю'}
 function save(){if(testingPopulation)return;try{localStorage.setItem('genesis-world-v1',JSON.stringify(world));$('#save').textContent='✓ Сохранено в браузере'}catch{$('#save').textContent='Сохранение недоступно'}}
-function animate(now){requestAnimationFrame(animate);const delta=Math.min(.08,(now-last)/1000);last=now;controls.update();ensureMaterialResources();ensureStructures();illuminate();applySeasonAppearance();animateSeasonParticles(delta,now);animateEcology(delta);animateHumanActions(now);if(!paused){tAccum+=delta*speed*.5;let iter=0;while(tAccum>=.25&&iter++<25){tick(.25);tAccum-=.25}}uiAccum+=delta;if(uiAccum>.5){updatePeople();renderUI();uiAccum=0}river.material.roughness=.14+.06*Math.sin(now*.001);renderer.render(scene,camera)}
+function animate(now){requestAnimationFrame(animate);const delta=Math.min(.08,(now-last)/1000);last=now;controls.update();refreshForestOnce();ensureMaterialResources();ensureStructures();illuminate();applySeasonAppearance();animateSeasonParticles(delta,now);animateEcology(delta);animateHumanActions(now);if(!paused){tAccum+=delta*speed*.5;let iter=0;while(tAccum>=.25&&iter++<25){tick(.25);tAccum-=.25}}uiAccum+=delta;if(uiAccum>.5){updatePeople();renderUI();uiAccum=0}river.material.roughness=.14+.06*Math.sin(now*.001);renderer.render(scene,camera)}
 async function runPopulationTest(){
  const button=$('#stressTestPanel'),result=$('#testResults');if(testingPopulation)return;testingPopulation=true;button.disabled=true;result.textContent='Тест запущен…';
  const live=world,storedBush=berryBushes.map(b=>b.food),storedAnimals=fauna.map(a=>({...a}));
