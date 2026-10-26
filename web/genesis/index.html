@@ -174,12 +174,23 @@ function assign(p,job,target){p.action=job;p.tx=target.x;p.tz=target.z}
 function animateEcology(delta){const now=performance.now()*.001;
  for(let i=0;i<fauna.length;i++){
  const a=fauna[i],mesh=faunaMeshes[i];if(!mesh)continue;mesh.visible=a.alive;if(!a.alive)continue;
- const distance=dist(a,{x:a.tx,z:a.tz});if(distance<2){a.tx=Math.max(-65,Math.min(65,a.x+rnd(-16,16)));a.tz=Math.max(-65,Math.min(65,a.z+rnd(-16,16)))}
- const d=dist(a,{x:a.tx,z:a.tz});if(d>.1){const pace=a.energy<25?.45:1;const step=Math.min(d,delta*1.4*pace);a.x+=(a.tx-a.x)/d*step;a.z+=(a.tz-a.z)/d*step}
- mesh.position.set(a.x,height(a.x,a.z)+Math.abs(Math.sin(now*3+i))*.035,a.z);mesh.rotation.y=Math.atan2(a.tx-a.x,a.tz-a.z);
- const active=d>1.5;mesh.rotation.z=active?Math.sin(now*3+i)*.025:0;
- if(mesh.children[1])mesh.children[1].rotation.z=active?Math.sin(now*2+i)*.045:-.18;
- for(let k=2;k<mesh.children.length;k++)mesh.children[k].rotation.z=active?Math.sin(now*5+(k%2)*Math.PI+i)*.24:0;
+ const nearest=closest(world.people,a,p=>p.alive);
+ const threatened=nearest&&dist(a,nearest)<9;
+ let herd=null,herdDist=Infinity;
+ for(const other of fauna){if(other===a||!other.alive||other.species!==a.species)continue;const d=dist(a,other);if(d<herdDist){herd=other;herdDist=d}}
+ if(threatened){const dx=a.x-nearest.x,dz=a.z-nearest.z,m=Math.hypot(dx,dz)||1;a.tx=Math.max(-72,Math.min(72,a.x+dx/m*21));a.tz=Math.max(-72,Math.min(72,a.z+dz/m*21))}
+ else if(herd&&herdDist>8&&herdDist<35){a.tx=herd.x+rnd(-3,3);a.tz=herd.z+rnd(-3,3)}
+ const distance=dist(a,{x:a.tx,z:a.tz});
+ if(distance<1.5&&!threatened){a.tx=Math.max(-65,Math.min(65,a.x+rnd(-11,11)));a.tz=Math.max(-65,Math.min(65,a.z+rnd(-11,11)))}
+ const d=dist(a,{x:a.tx,z:a.tz}),pace=threatened?3:a.energy<25?.45:1;
+ if(d>.12){const step=Math.min(d,delta*1.25*pace);a.x+=(a.tx-a.x)/d*step;a.z+=(a.tz-a.z)/d*step}
+ const destination=Math.atan2(a.tx-a.x,a.tz-a.z),angle=((destination-mesh.rotation.y+Math.PI*3)%(Math.PI*2))-Math.PI;
+ mesh.rotation.y+=angle*Math.min(1,delta*5);
+ const active=d>1.5,phase=now*(threatened?12:5)+i;
+ mesh.position.set(a.x,height(a.x,a.z)+(active?Math.abs(Math.sin(phase))*.048:0),a.z);
+ mesh.rotation.z=active?Math.sin(phase)*.024:0;
+ if(mesh.children[1]){mesh.children[1].rotation.z=active?Math.sin(phase*.5)*.05:-.27+Math.sin(now*.9+i)*.07;mesh.children[1].rotation.y=Math.sin(now*.7+i)*.09}
+ for(let k=2;k<mesh.children.length;k++)mesh.children[k].rotation.z=active?Math.sin(phase+(k%2)*Math.PI)*.31:0;
  }
  for(const f of fish){f.z+=delta*f.speed;if(f.z>80)f.z=-80;f.mesh.position.z=f.z;f.mesh.rotation.z=Math.sin(now*3+f.z)*.15}
 }
