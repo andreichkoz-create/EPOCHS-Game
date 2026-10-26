@@ -139,11 +139,18 @@ function shelterScore(c,p){const nearWater=100-Math.min(100,Math.abs(c.x+4)*2);c
 function chooseShelter(p){return [...caves].sort((a,b)=>shelterScore(b,p)-shelterScore(a,p))[0]}
 function closest(list,p,condition=()=>true){let best=null,d=Infinity;for(const item of list){if(!condition(item))continue;const dd=dist(p,item);if(dd<d){d=dd;best=item}}return best}
 function assign(p,job,target){p.action=job;p.tx=target.x;p.tz=target.z}
-function animateEcology(delta){for(let i=0;i<fauna.length;i++){const a=fauna[i],mesh=faunaMeshes[i];mesh.visible=a.alive;if(!a.alive)continue;
- if(dist(a,{x:a.tx,z:a.tz})<2){a.tx=rnd(-44,44);a.tz=rnd(-44,44)}
- const d=dist(a,{x:a.tx,z:a.tz});if(d>.1){const step=Math.min(d,delta*1.8);a.x+=(a.tx-a.x)/d*step;a.z+=(a.tz-a.z)/d*step}
- mesh.position.set(a.x,height(a.x,a.z),a.z);mesh.rotation.y=Math.atan2(a.tx-a.x,a.tz-a.z)}
- for(const f of fish){f.z+=delta*f.speed;if(f.z>80)f.z=-80;f.mesh.position.z=f.z}}
+function animateEcology(delta){const now=performance.now()*.001;
+ for(let i=0;i<fauna.length;i++){
+ const a=fauna[i],mesh=faunaMeshes[i];if(!mesh)continue;mesh.visible=a.alive;if(!a.alive)continue;
+ const distance=dist(a,{x:a.tx,z:a.tz});if(distance<2){a.tx=Math.max(-65,Math.min(65,a.x+rnd(-16,16)));a.tz=Math.max(-65,Math.min(65,a.z+rnd(-16,16)))}
+ const d=dist(a,{x:a.tx,z:a.tz});if(d>.1){const pace=a.energy<25?.45:1;const step=Math.min(d,delta*1.4*pace);a.x+=(a.tx-a.x)/d*step;a.z+=(a.tz-a.z)/d*step}
+ mesh.position.set(a.x,height(a.x,a.z)+Math.abs(Math.sin(now*3+i))*.035,a.z);mesh.rotation.y=Math.atan2(a.tx-a.x,a.tz-a.z);
+ const active=d>1.5;mesh.rotation.z=active?Math.sin(now*3+i)*.025:0;
+ if(mesh.children[1])mesh.children[1].rotation.z=active?Math.sin(now*2+i)*.045:-.18;
+ for(let k=2;k<mesh.children.length;k++)mesh.children[k].rotation.z=active?Math.sin(now*5+(k%2)*Math.PI+i)*.24:0;
+ }
+ for(const f of fish){f.z+=delta*f.speed;if(f.z>80)f.z=-80;f.mesh.position.z=f.z;f.mesh.rotation.z=Math.sin(now*3+f.z)*.15}
+}
 let observerLight=localStorage.getItem('genesis-observer-light')!=='off';
 function illuminate(){const simulationTime=((world.day%1)+1)%1;const t=observerLight?.5:simulationTime;const phase=Math.sin(t*Math.PI*2-Math.PI/2);
  const daylight=Math.max(0,phase);sun.intensity=.12+daylight*2.7;ambient.intensity=.18+daylight*1.85;
@@ -217,11 +224,11 @@ function animateHumanActions(now){
  const moving=dist(p,{x:p.tx,z:p.tz})>1&&p.action!=='спит';
  const phase=t*6+p.id*1.71,cycle=Math.sin(phase);
  const activity=p.action||'';
- for(let i=3;i<7;i++)parts[i].rotation.x=0;
+ for(let i=3;i<7;i++){parts[i].rotation.x=0;parts[i].rotation.z=0}parts[0].rotation.x=0;
  parts[0].rotation.z=Math.sin(t*1.5+p.id)*.012;
  parts[1].rotation.y=Math.sin(t*.75+p.id)*.12;
  g.rotation.z=0;
- if(activity==='спит'){g.rotation.z=1.25;parts[0].position.y=.6;continue}
+ if(activity==='спит'){g.rotation.z=1.1;parts[0].rotation.x=-.17;parts[0].position.y=.6;continue}
  parts[0].position.y=1.15;
  if(moving){
  parts[3].rotation.x=cycle*.58;parts[4].rotation.x=-cycle*.58;
@@ -230,6 +237,7 @@ function animateHumanActions(now){
  }else if(/ягоды|камень|растение|рыбу|пьёт/.test(activity)){
  parts[0].rotation.x=.22;parts[3].rotation.x=-.55+Math.sin(t*4+p.id)*.24;
  parts[4].rotation.x=-.5-Math.sin(t*4+p.id)*.22;
+ }else if(/стро|соедин|материалы|древесину/.test(activity)){parts[0].rotation.x=.17;parts[3].rotation.x=-.75+Math.sin(t*4+p.id)*.4;parts[4].rotation.x=-.65-Math.sin(t*4+p.id)*.3;
  }else if(activity==='общается'){
  parts[3].rotation.z=.24+Math.sin(t*2+p.id)*.12;
  parts[1].rotation.y=Math.sin(t*1.3+p.id)*.22;
@@ -238,7 +246,13 @@ function animateHumanActions(now){
 }
 
 const meshes=new Map();const ray=new THREE.Raycaster(),mouse=new THREE.Vector2();let selected=null;
-function updatePeople(){for(const p of world.people){if(!p.alive){if(meshes.has(p.id)){scene.remove(meshes.get(p.id));meshes.delete(p.id)}continue}if(!meshes.has(p.id)){const mesh=buildHuman(p.id);scene.add(mesh);meshes.set(p.id,mesh)}const mesh=meshes.get(p.id);mesh.position.set(p.x,height(p.x,p.z),p.z);mesh.scale.setScalar(p.age<12?.62:1);mesh.rotation.y=Math.atan2(p.tx-p.x,p.tz-p.z);const walking=p.action!=='спит'&&dist(p,{x:p.tx,z:p.tz})>1;mesh.children.slice(3).forEach((limb,i)=>{limb.rotation.x=walking?Math.sin(performance.now()*.008+i*Math.PI)*.45:0});mesh.position.y+=walking?Math.abs(Math.sin(performance.now()*.008))*.1:0}}
+function updatePeople(){for(const p of world.people){
+ if(!p.alive){if(meshes.has(p.id)){scene.remove(meshes.get(p.id));meshes.delete(p.id)}continue}
+ if(!meshes.has(p.id)){const mesh=buildHuman(p.id);scene.add(mesh);meshes.set(p.id,mesh)}
+ const mesh=meshes.get(p.id);mesh.position.set(p.x,height(p.x,p.z),p.z);mesh.scale.setScalar(p.age<12?.62:1);
+ const d=dist(p,{x:p.tx,z:p.tz});if(d>.5){const direction=Math.atan2(p.tx-p.x,p.tz-p.z);
+ let difference=((direction-mesh.rotation.y+Math.PI*3)%(Math.PI*2))-Math.PI;mesh.rotation.y+=difference*.24}
+ }}
 renderer.domElement.addEventListener('pointerup',ev=>{if(Math.abs(ev.movementX)+Math.abs(ev.movementY)>8)return;mouse.x=(ev.clientX/innerWidth)*2-1;mouse.y=-(ev.clientY/innerHeight)*2+1;ray.setFromCamera(mouse,camera);const hits=ray.intersectObjects([...meshes.values()],true);if(hits.length){selected=hits[0].object.userData.id;$('#observerPanel').classList.add('open');renderUI()}});
 let paused=false,speed=1,truthMode=false,tAccum=0,uiAccum=0,last=performance.now();
 // GENESIS cognition v0.5: each person retains an autobiographical record,
