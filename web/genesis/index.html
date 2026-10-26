@@ -64,8 +64,8 @@ for(let i=0;i<420;i++){const x=treeRandom(i*3+1)*160-80,z=treeRandom(i*3+2)*160-
 scene.add(trunks,crowns);
 let forestInitialized=false;function refreshForestOnce(){if(!forestInitialized){refreshForest();forestInitialized=true}}
 const fallenTrees=new Map(),logMaterial=new THREE.MeshStandardMaterial({color:'#755339',roughness:1});
-function forestState(){world.forest=world.forest||{fallen:[],health:{}};return world.forest}
-function refreshForest(){const state=forestState(),removed=new Set(state.fallen.map(t=>t.id));
+function forestState(){world.forest=world.forest||{fallen:[],health:{}};world.forest.regrown=world.forest.regrown||{};return world.forest}
+function refreshForest(){const state=forestState(),removed=new Set(state.fallen.map(t=>t.id));for(const [id,t] of Object.entries(state.regrown)){if(forest[Number(id)])Object.assign(forest[Number(id)],t)}
  for(const tree of forest){const gone=removed.has(tree.id);dummy.position.set(tree.x,height(tree.x,tree.z)+1.5*tree.scale,tree.z);
  dummy.rotation.set(0,0,0);dummy.scale.setScalar(gone?0:tree.scale);dummy.updateMatrix();trunks.setMatrixAt(tree.id,dummy.matrix);
  dummy.position.y+=3.3*tree.scale;dummy.updateMatrix();crowns.setMatrixAt(tree.id,dummy.matrix)}
@@ -447,7 +447,7 @@ function updateEcosystem(dt){
  // A harvested forest slot becomes available for a seedling after natural regrowth.
  if(fallen.length&&e.seedlings.length&&Math.random()<dt*.012*growth){
   const ready=e.seedlings.find(t=>t.age>100);
-  if(ready){const cut=fallen.shift(),old=forest[cut.id];if(old){old.x=ready.x;old.z=ready.z;old.scale=.3;old.regrown=true;e.treeBirths++;const cached=fallenTrees.get(cut.id);if(cached){scene.remove(cached.group);fallenTrees.delete(cut.id)}e.seedlings.splice(e.seedlings.indexOf(ready),1);refreshForest()}}
+  if(ready){const cut=fallen.shift(),old=forest[cut.id];if(old){old.x=ready.x;old.z=ready.z;old.scale=.3;old.regrown=true;forestState().regrown[cut.id]={x:old.x,z:old.z,scale:old.scale};e.treeBirths++;const cached=fallenTrees.get(cut.id);if(cached){scene.remove(cached.group);fallenTrees.delete(cut.id)}e.seedlings.splice(e.seedlings.indexOf(ready),1);refreshForest()}}
  }
  for(const a of e.animals){
   if(!a.alive)continue;
