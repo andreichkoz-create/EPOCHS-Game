@@ -185,6 +185,13 @@ const leafGeo=new THREE.PlaneGeometry(.26,.4),leafMat=new THREE.MeshBasicMateria
 for(let i=0;i<90;i++){const leaf=new THREE.Mesh(leafGeo,leafMat);leaf.position.set(rnd(-58,58),rnd(.4,10),rnd(-58,58));leaf.rotation.set(rnd(0,4),rnd(0,6),rnd(0,4));autumnLeaves.add(leaf)}
 autumnLeaves.visible=false;
 let lastVisualSeason='';
+
+const wildflowers=new THREE.InstancedMesh(new THREE.DodecahedronGeometry(.14,0),new THREE.MeshStandardMaterial({color:'#edcbd2',roughness:1}),520);
+const bloomDummy=new THREE.Object3D();
+for(let i=0;i<520;i++){const x=treeRandom(i*9+1700)*155-77,z=treeRandom(i*11+3000)*155-77;
+ bloomDummy.position.set(x,height(x,z)+.3,z);bloomDummy.scale.setScalar(.45+treeRandom(i*13+700)*1.2);bloomDummy.rotation.set(0,0,0);bloomDummy.updateMatrix();wildflowers.setMatrixAt(i,bloomDummy.matrix)}
+scene.add(wildflowers);
+
 function applySeasonAppearance(){
  const current=seasonName();if(current===lastVisualSeason)return;lastVisualSeason=current;
  const palette={
@@ -195,6 +202,7 @@ function applySeasonAppearance(){
  };
  const p=palette[current];ground.material.color.set(p.ground);crowns.material.color.set(p.trees);
  grass.material.color.set(p.grass);bushMat.color.set(p.bush);scene.fog.color.set(p.fog);
+ wildflowers.visible=current==='Весна'||current==='Лето';wildflowers.material.color.set(current==='Весна'?'#f3c8df':'#ecd67d');
  snowCover.visible=current==='Зима';snowflakes.visible=current==='Зима';autumnLeaves.visible=current==='Осень';
 }
 function animateSeasonParticles(delta,now){
