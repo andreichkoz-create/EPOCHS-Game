@@ -268,6 +268,67 @@ function materialExploration(p,dt){
  }
 }
 
+
+/* Physical construction is represented as individual placed components, not a
+   technology-tree blueprint. Residents may discover that adjacent pieces form shelter. */
+const structureMeshes=new Map();
+const timberMat=new THREE.MeshStandardMaterial({color:'#806448',roughness:1});
+const strawMat=new THREE.MeshStandardMaterial({color:'#aa9763',roughness:1,side:THREE.DoubleSide});
+function ensureStructures(){
+ world.structures=world.structures||[];
+ for(const item of world.structures){
+  if(structureMeshes.has(item.id))continue;
+  const group=new THREE.Group();
+  if(item.kind==='branch'){
+   const piece=new THREE.Mesh(new THREE.CylinderGeometry(.12,.17,item.length||3,7),timberMat);
+   piece.rotation.z=Math.PI/2-(item.angle||0);piece.position.y=1.15;piece.castShadow=true;group.add(piece);
+  }else{
+   const piece=new THREE.Mesh(new THREE.BoxGeometry(2.7,.12,1.9),strawMat);
+   piece.position.y=1.8;piece.rotation.z=.15;piece.castShadow=true;group.add(piece);
+  }
+  group.position.set(item.x,height(item.x,item.z),item.z);
+  scene.add(group);structureMeshes.set(item.id,group);
+ }
+ for(const [id,m] of structureMeshes)if(!world.structures.some(v=>v.id===id)){scene.remove(m);structureMeshes.delete(id)}
+}
+function construct(p,dt){
+ initMind(p);
+ p.buildIntent=p.buildIntent||null;
+ p.inventory=p.inventory||{камни:0,ветки:0,острые_камни:0};
+ const weatherNeed=p.cold>12||p.energy<48;
+ const locallyUseful=(p.knowledge['укрытия']||0)>4;
+ const nearby=world.structures.filter(x=>dist(x,p)<7);
+ if(!weatherNeed&&!p.buildIntent&&Math.random()>dt*p.mind.curiosity*.05)return false;
+ if(!locallyUseful)return false;
+ if(!p.buildIntent){
+  const shelter=chooseShelter(p);
+  // Investigate an assembly location near a real cave, or near an existing
+  // component. The choice depends on remembered safety and distance.
+  const site=nearby.length?nearby[0]:{x:shelter.x+rnd(-5,5),z:shelter.z+rnd(-5,5)};
+  p.buildIntent={x:site.x,z:site.z,progress:0};
+  remember(p,'замысел','Попробую перенести материалы туда, где можно укрыться.');
+ }
+ const site=p.buildIntent;
+ if(dist(p,site)>2){p.action='несёт материалы';p.tx=site.x;p.tz=site.z;return true}
+ p.action='соединяет материалы';p.tx=p.x;p.tz=p.z;
+ site.progress+=dt*(.3+p.mind.curiosity);
+ if(site.progress>1.4){
+   world.nextStructureId=(world.nextStructureId||0)+1;
+   const kind=nearby.length>=2?'cover':'branch';
+   world.structures.push({id:world.nextStructureId,kind,x:site.x+rnd(-1.5,1.5),z:site.z+rnd(-1.5,1.5),length:rnd(2,4),angle:rnd(-1,1),builder:p.id,day:world.day});
+   world.structures=world.structures.slice(-180);
+   remember(p,'эксперимент','Перенёс и расположил материалы; проверяю, помогает ли укрытие.');
+   hypothesis(p,'устойчивость собранных предметов',1,nearby.length>0);
+   if(nearby.length>=2)log(world,p.name+' соединил несколько предметов в укрытие.');
+   p.buildIntent=null;
+ }
+ return true;
+}
+function shelteredByConstruction(p){
+ const neighbors=(world.structures||[]).filter(o=>dist(o,p)<4);
+ return neighbors.some(o=>o.kind==='cover')||neighbors.length>=4;
+}
+
 function tick(dt){
  world.day+=dt;
  const hour=(world.day%1)*24;const season=seasonName();const winter=season==='Зима';
@@ -276,10 +337,10 @@ function tick(dt){
  initMind(p);p.age=(world.day-p.birth)/365;p.knowledge=p.knowledge||{};p.action=p.action||'исследует';p.skills=p.skills||{};p.cold=p.cold||0;p.foodStore=p.foodStore||0;const shelter=chooseShelter(p);for(const a of fauna)if(a.alive)observed(p,a,'поведение животных',dt*.35);for(const b of berryBushes)if(b.food>1)observed(p,b,'съедобные растения',dt*.4);for(const rock of stones)observed(p,rock,'свойства камня',dt*.12);for(const c of caves)observed(p,c,'укрытия',dt*.85);p.hunger=Math.min(110,p.hunger+dt*5);think(p,dt);materialExploration(p,dt);p.thirst=Math.min(110,p.thirst+dt*7);
  p.energy=Math.max(0,p.energy-dt*4);
  if(p.thirst>95||p.hunger>100)p.health-=dt*9;else if(p.thirst<45&&p.hunger<55&&p.energy>35)p.health=Math.min(100,p.health+dt*2);
- if(p.age>68)p.health-=dt*2;if(winter&&dist(p,shelter)>7){p.cold+=dt*1.15;if(p.cold>78)p.health-=dt*3.5}else p.cold=Math.max(0,p.cold-dt*12);
+ if(p.age>68)p.health-=dt*2;if(winter&&dist(p,shelter)>7&&!shelteredByConstruction(p)){p.cold+=dt*1.15;if(p.cold>78)p.health-=dt*3.5}else p.cold=Math.max(0,p.cold-dt*12);
  if(p.health<=0||p.age>95){p.alive=false;const cause=p.age>95?'старость':p.cold>65?'холод':p.hunger>85?'голод':p.thirst>80?'обезвоживание':'прочее';world.mortality=world.mortality||{};world.mortality[cause]=(world.mortality[cause]||0)+1;log(world,p.name+' умер: '+cause+'.');continue}
  if(hour>=21||hour<5||p.energy<12){if((p.knowledge['укрытия']||0)>2&&dist(p,shelter)>3){p.action='ищет укрытие';p.tx=shelter.x;p.tz=shelter.z}else{p.action='спит';p.energy=Math.min(100,p.energy+dt*(dist(p,shelter)<6?70:43));p.tx=p.x;p.tz=p.z;continue}}
- if(p.action==='изучает камень'||p.action==='исследует растение'){}else if(winter&&(p.knowledge['укрытия']||0)>2&&p.cold>42){assign(p,'ищет укрытие',shelter)}else if(p.thirst>28){assign(p,'ищет воду',{x:-4,z:Math.max(-65,Math.min(65,p.z))})}
+ if(p.action==='изучает камень'||p.action==='исследует растение'){}else if(construct(p,dt)){}else if(winter&&(p.knowledge['укрытия']||0)>2&&p.cold>42){assign(p,'ищет укрытие',shelter)}else if(p.thirst>28){assign(p,'ищет воду',{x:-4,z:Math.max(-65,Math.min(65,p.z))})}
  else if(p.hunger>24){
   if(p.foodStore>0&&p.hunger>40){const eaten=Math.min(p.foodStore,dt*2);p.foodStore-=eaten;p.hunger=Math.max(0,p.hunger-eaten*23)}
   const bush=closest(berryBushes,p,b=>b.food>=1);
@@ -312,7 +373,7 @@ function tick(dt){
 }
 function renderUI(){$('#day').textContent=Math.floor(world.day);$('#season').textContent=seasonName();$('#clock').textContent=String(Math.floor((world.day%1)*24)).padStart(2,'0')+':'+String(Math.floor((world.day%1*24%1)*60)).padStart(2,'0');$('#count').textContent=world.people.filter(p=>p.alive).length;$('#gen').textContent=Math.max(1,...world.people.map(p=>p.kin.length?2:1));const p=world.people.find(p=>p.id===selected);$('#subject').textContent=p?p.name:'Долина истоков';$('#details').innerHTML=p?'<div class="stat">Возраст <b>'+p.age.toFixed(1)+'</b></div><div class="stat">Здоровье <b>'+Math.max(0,p.health).toFixed(0)+'</b></div><div class="stat">Жажда <b>'+p.thirst.toFixed(0)+'</b></div><div class="stat">Голод <b>'+p.hunger.toFixed(0)+'</b></div><h3>Навыки</h3>'+Object.entries(p.skills).map(([k,v])=>'<div class="stat">'+k+' <b>'+v.toFixed(1)+'</b></div>').join('')+'<h3>Личность и намерения</h3><div class="stat">Цель <b>'+((p.mind||{}).intent||'выжить')+'</b></div><div class="stat">Экспериментов <b>'+((p.mind||{}).experiments||0)+'</b></div><div class="stat">Успешных <b>'+((p.mind||{}).successful||0)+'</b></div><h3>Гипотезы</h3>'+Object.entries((p.mind||{}).beliefs||{}).map(([k,v])=>'<div class="stat">'+k+' <b>'+Math.round(v.confidence*100)+'%</b></div>').join('')+'<h3>Предметы из экспериментов</h3><div class="stat">Создано <b>'+((p.artifacts||[]).length)+'</b></div>'+'<h3>Личный опыт</h3>'+((p.mind||{}).episodes||[]).slice(-6).reverse().map(e=>'<div class="entry">'+e.message+'</div>').join('')+'<h3>Исследованные явления</h3>'+Object.entries(p.knowledge||{}).filter(([k,v])=>v>1).map(([k,v])=>'<div class="stat">'+k+' <b>'+Math.round(v)+'%</b></div>').join('')+'<h3>Субъективная память</h3>'+p.memory.map(x=>'<div class="entry">'+x+'</div>').join(''):'Мир существует без ваших команд. Нажмите на жителя, чтобы увидеть его развитие. Открытия возникают из приобретённых навыков.';$('#chronicle').innerHTML=(truthMode?world.truth.slice(-12).reverse():world.chronicle.slice(0,12)).map(e=>'<div class="entry"><span class="tag">ДЕНЬ '+e.day+'</span><br>'+e.message+'</div>').join('');$('#history').textContent=truthMode?'Показать память мира':'Показать объективную историю'}
 function save(){if(testingPopulation)return;try{localStorage.setItem('genesis-world-v1',JSON.stringify(world));$('#save').textContent='✓ Сохранено в браузере'}catch{$('#save').textContent='Сохранение недоступно'}}
-function animate(now){requestAnimationFrame(animate);const delta=Math.min(.08,(now-last)/1000);last=now;controls.update();illuminate();applySeasonAppearance();animateSeasonParticles(delta,now);animateEcology(delta);animateHumanActions(now);if(!paused){tAccum+=delta*speed*.5;let iter=0;while(tAccum>=.25&&iter++<25){tick(.25);tAccum-=.25}}uiAccum+=delta;if(uiAccum>.5){updatePeople();renderUI();uiAccum=0}river.material.roughness=.14+.06*Math.sin(now*.001);renderer.render(scene,camera)}
+function animate(now){requestAnimationFrame(animate);const delta=Math.min(.08,(now-last)/1000);last=now;controls.update();ensureStructures();illuminate();applySeasonAppearance();animateSeasonParticles(delta,now);animateEcology(delta);animateHumanActions(now);if(!paused){tAccum+=delta*speed*.5;let iter=0;while(tAccum>=.25&&iter++<25){tick(.25);tAccum-=.25}}uiAccum+=delta;if(uiAccum>.5){updatePeople();renderUI();uiAccum=0}river.material.roughness=.14+.06*Math.sin(now*.001);renderer.render(scene,camera)}
 async function runPopulationTest(){
  const button=$('#stressTestPanel'),result=$('#testResults');if(testingPopulation)return;testingPopulation=true;button.disabled=true;result.textContent='Тест запущен…';
  const live=world,storedBush=berryBushes.map(b=>b.food),storedAnimals=fauna.map(a=>({...a}));
