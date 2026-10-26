@@ -269,9 +269,8 @@ function installWind(material,strength){
  };
  material.customProgramCacheKey=()=> 'genesis-wind-'+strength;
 }
-installWind(grassMat,.07);
-installWind(crowns.material,.023);
-function animateWind(time){for(const m of [grassMat,crowns.material])if(m.userData.windShader)m.userData.windShader.uniforms.genesisWindTime.value=time}
+let windInstalled=false;
+function animateWind(time){if(!windInstalled){installWind(grassMat,.07);installWind(crowns.material,.023);windInstalled=true}for(const m of [grassMat,crowns.material])if(m.userData.windShader)m.userData.windShader.uniforms.genesisWindTime.value=time}
 
 function animateVisualWorld(now,delta){
  const t=now*.001;animateWind(t);
